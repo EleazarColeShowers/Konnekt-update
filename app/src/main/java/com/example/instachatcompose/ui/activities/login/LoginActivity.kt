@@ -118,7 +118,7 @@ fun ReturnHome(onBackPressed: () -> Unit){
 
 @Composable
 fun LoginForm(){
-    val context = LocalContext.current
+    val context = LocalContext.current as ComponentActivity
 
     val auth = FirebaseAuth.getInstance()
     var isChecked by remember { mutableStateOf(false) }

@@ -380,10 +380,8 @@ fun TermsAndConditionsText() {
         val startIndex = text.indexOf(termsAndConditions)
         val endIndex = startIndex + termsAndConditions.length
         if (it in startIndex..endIndex) {
-            // Handle click action here if needed
             val intent = Intent(context, TermsAndConditions::class.java)
             context.startActivity(intent)
-            // For example, navigate to terms and conditions screen
         }
     })
 }
