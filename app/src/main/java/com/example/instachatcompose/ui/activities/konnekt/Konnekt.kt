@@ -444,66 +444,39 @@ fun acceptFriendRequest(request: FriendRequest, requestId: String) {
 @Composable
 fun UserReceivesRequest(currentUserId: String) {
     var newFriendRequests by remember { mutableStateOf<List<Pair<String, FriendRequest>>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(currentUserId) {
-        isLoading = true
         listenForFriendRequests(currentUserId) { (requestId, friendRequest) ->
-            Log.d("FriendRequest", "Received friend request: $friendRequest")
-            newFriendRequests = newFriendRequests + Pair(requestId, friendRequest)
+            newFriendRequests = newFriendRequests.toMutableList().apply {
+                add(Pair(requestId, friendRequest))
+            }
             isLoading = false
         }
     }
 
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            content = {
-                Button(
-                    onClick = {
-                        // Manually refresh the friend requests
-                        isLoading = true
-                        newFriendRequests = emptyList() // Clear existing requests
-                        listenForFriendRequests(currentUserId) { (requestId, friendRequest) ->
-                            newFriendRequests = newFriendRequests + Pair(requestId, friendRequest)
-                            isLoading = false
-                        }
-                    },
-                    enabled = !isLoading,
-                ) {
-                    Text("Refresh")
-                }
-                if (isLoading) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    CircularProgressIndicator()
-                }
-            }
-        )
-
-        Text(
-            text = "Requests",
-            style = TextStyle(
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF2F9ECE),
-            ),
-            modifier = Modifier.padding(16.dp)
-        )
-
-        if (newFriendRequests.isEmpty()) {
-            Text(
-                text = "No new requests",
-                style = TextStyle(
-                    fontSize = 16.sp,
-                    color = Color.Gray
-                ),
-                modifier = Modifier.padding(16.dp)
-            )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
         } else {
-            newFriendRequests.forEach { (requestId, request) ->
-                FriendRequestItem(request, requestId)
+            if (newFriendRequests.isEmpty()) {
+                Text("No new requests", modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                LazyColumn {
+                    items(newFriendRequests) { (requestId, friendRequest) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Request from: ${friendRequest.from}")
+                            Button(onClick = { acceptFriendRequest(friendRequest, requestId) }) {
+                                Text("Accept")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
