@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -397,85 +399,124 @@ data class FriendRequest(
 )
 
 fun listenForFriendRequests(currentUserId: String, onNewRequest: (Pair<String, FriendRequest>) -> Unit) {
-    val database = FirebaseDatabase.getInstance().reference
-    val friendRequestsRef = database.child("received_requests").child(currentUserId)
+    val database = FirebaseDatabase.getInstance()
+    val requestsRef = database.getReference("received_requests/$currentUserId")
 
-    friendRequestsRef.addChildEventListener(object : ChildEventListener {
-        override fun onChildAdded(dataSnapshot: DataSnapshot, previousChildName: String?) {
-            val friendRequest = dataSnapshot.getValue(FriendRequest::class.java)
-            if (friendRequest != null) {
-                val requestId = dataSnapshot.key ?: ""
-                onNewRequest(Pair(requestId, friendRequest))
-            } else {
-                Log.e("FriendRequestListener", "Failed to parse friend request from snapshot")
+    requestsRef.addChildEventListener(object : ChildEventListener {
+        override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+            val request = snapshot.getValue(FriendRequest::class.java)
+            if (request != null) {
+                onNewRequest(snapshot.key!! to request)
             }
         }
 
-        override fun onChildChanged(dataSnapshot: DataSnapshot, previousChildName: String?) {}
-
-        override fun onChildRemoved(dataSnapshot: DataSnapshot) {}
-
-        override fun onChildMoved(dataSnapshot: DataSnapshot, previousChildName: String?) {}
-
-        override fun onCancelled(databaseError: DatabaseError) {
-            Log.e("FriendRequestListener", "Error listening for friend requests", databaseError.toException())
+        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+        override fun onChildRemoved(snapshot: DataSnapshot) {}
+        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+        override fun onCancelled(error: DatabaseError) {
+            println("Failed to listen for friend requests: ${error.message}")
         }
     })
 }
 
-fun acceptFriendRequest(request: FriendRequest, requestId: String) {
+fun acceptFriendRequest(requestId: String, senderId: String, receiverId: String) {
     val database = FirebaseDatabase.getInstance().reference
 
-    // Update the status of the friend request
     val updates = mapOf(
-        "/sent_requests/${request.from}/$requestId/status" to "accepted",
-        "/received_requests/${request.to}/$requestId/status" to "accepted"
+        "/friend_requests/sent/$senderId/$requestId/status" to "accepted",
+        "/friend_requests/received/$receiverId/$requestId/status" to "accepted",
+        "/friends/$senderId/$receiverId" to true,
+        "/friends/$receiverId/$senderId" to true
     )
 
     database.updateChildren(updates).addOnCompleteListener { task ->
         if (task.isSuccessful) {
-            Log.d("AcceptRequest", "Friend request accepted")
+            Log.d("AcceptRequest", "Friend request accepted successfully")
         } else {
             Log.e("AcceptRequest", "Error accepting friend request", task.exception)
         }
     }
 }
 
+fun removeFriendRequest(requestId: String, senderId: String, receiverId: String) {
+    val database = FirebaseDatabase.getInstance().reference
+
+    val updates = mapOf(
+        "/friend_requests/sent/$senderId/$requestId" to null,
+        "/friend_requests/received/$receiverId/$requestId" to null
+    )
+
+    database.updateChildren(updates).addOnCompleteListener { task ->
+        if (task.isSuccessful) {
+            Log.d("RemoveRequest", "Friend request removed successfully")
+        } else {
+            Log.e("RemoveRequest", "Error removing friend request", task.exception)
+        }
+    }
+}
+
 @Composable
 fun UserReceivesRequest(currentUserId: String) {
-    var newFriendRequests by remember { mutableStateOf<List<Pair<String, FriendRequest>>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
 
     LaunchedEffect(currentUserId) {
-        listenForFriendRequests(currentUserId) { (requestId, friendRequest) ->
-            newFriendRequests = newFriendRequests.toMutableList().apply {
-                add(Pair(requestId, friendRequest))
+        listenForFriendRequests(currentUserId) { newRequest ->
+            if (!friendRequests.any { it.first == newRequest.first }) {
+                friendRequests.add(newRequest)
             }
-            isLoading = false
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp)
+    ) {
+        Text(
+            text = "Friend Requests",
+            style = TextStyle(
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (friendRequests.isEmpty()) {
+            Text(
+                text = "No new friend requests",
+                style = TextStyle(
+                    color = Color.Gray,
+                    fontSize = 16.sp
+                ),
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else {
-            if (newFriendRequests.isEmpty()) {
-                Text("No new requests", modifier = Modifier.align(Alignment.CenterHorizontally))
-            } else {
-                LazyColumn {
-                    items(newFriendRequests) { (requestId, friendRequest) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Request from: ${friendRequest.from}")
-                            Button(onClick = { acceptFriendRequest(friendRequest, requestId) }) {
-                                Text("Accept")
-                            }
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(friendRequests) { (requestId, friendRequest) ->
+                    FriendRequestItem(
+                        friendRequest = friendRequest,
+                        onAccept = {
+                            acceptFriendRequest(
+                                requestId = requestId,
+                                senderId = friendRequest.from,
+                                receiverId = currentUserId
+                            )
+                            // Remove accepted request from the list
+                            friendRequests.removeIf { it.first == requestId }
+                        },
+                        onDecline = {
+                            removeFriendRequest(
+                                requestId = requestId,
+                                senderId = friendRequest.from,
+                                receiverId = currentUserId
+                            )
+                            // Remove declined request from the list
+                            friendRequests.removeIf { it.first == requestId }
                         }
-                    }
+                    )
                 }
             }
         }
@@ -483,63 +524,32 @@ fun UserReceivesRequest(currentUserId: String) {
 }
 
 @Composable
-fun FriendRequestItem(request: FriendRequest, requestId: String) {
+fun FriendRequestItem(
+    friendRequest: FriendRequest,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(Modifier.width(160.dp)) {
-            val painter =
-                rememberAsyncImagePainter(model = request.from) // Assuming the profile picture URL is in `from` for this example
-            Image(
-                painter = painter,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.background)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(text = request.from, fontWeight = FontWeight.Bold)
-                Text(text = request.status, color = Color.Gray)
-            }
+        Column {
+            Text(text = "From: ${friendRequest.from}", fontWeight = FontWeight.Bold)
+            Text(text = "Status: ${friendRequest.status}", color = Color.Gray)
         }
-        val acceptIcon =
-            painterResource(id = R.drawable.addfriends) // Replace with your accept icon resource ID
-        Row(
-            modifier = Modifier
-                .width(110.dp)
-                .border(
-                    width = 1.dp,
-                    color = Color(0xFF2F9ECE),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .padding(8.dp)
-                .clickable {
-                    Log.d("FriendRequest", "Accepting friend request from: ${request.from}")
-                    acceptFriendRequest(request, requestId)
-                }
-        ) {
-            Image(
-                painter = acceptIcon,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                text = "Accept",
-                style = TextStyle(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight(400),
-                    color = Color(0xFF2F9ECE)
-                )
-            )
+        Row {
+            Button(onClick = onAccept) {
+                Text("Accept")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = onDecline) {
+                Text("Decline")
+            }
         }
     }
 }
-
 enum class BottomAppBarItem {
     Messages,
     Calls,
