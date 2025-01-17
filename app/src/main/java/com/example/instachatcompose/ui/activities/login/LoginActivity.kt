@@ -7,8 +7,11 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -51,12 +56,17 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.MainActivity
 import com.example.instachatcompose.ui.activities.data.SecureStorage
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.signup.CustomCheckbox
 import com.example.instachatcompose.ui.activities.signup.SignUpActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.database.FirebaseDatabase
 
 
@@ -117,27 +127,56 @@ fun ReturnHome(onBackPressed: () -> Unit){
 }
 
 @Composable
-fun LoginForm(){
+fun LoginForm() {
     val context = LocalContext.current as ComponentActivity
-
     val auth = FirebaseAuth.getInstance()
+
     var isChecked by remember { mutableStateOf(false) }
     val (savedEmail, savedPassword) = SecureStorage.getUserCredentials(context)
 
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val emailIcon = painterResource(id = R.drawable.emailicon)
+    val passwordIcon = painterResource(id = R.drawable.passwordseen)
 
-//    var username by remember {
-//        mutableStateOf("")
-//    }
-    var email by remember {
-        mutableStateOf("")
+    val googleSignInClient = remember {
+        GoogleSignIn.getClient(
+            context,
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(context.getString(R.string.default_web_client_id))  // Get this from Firebase project settings
+                .requestEmail()
+                .build()
+        )
     }
-    var password by remember {
-        mutableStateOf("")
-    }
-    val emailIcon= painterResource(id = R.drawable.emailicon)
-    val passwordIcon= painterResource(id = R.drawable.passwordseen)
 
-    Column{
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account.idToken
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            FirebaseAuth.getInstance().signInWithCredential(credential)
+                .addOnCompleteListener { authTask ->
+                    if (authTask.isSuccessful) {
+                        Toast.makeText(context, "You have successfully logged in", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(context, MessageActivity::class.java)
+                        context.startActivity(intent)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Firebase Auth Failed: ${authTask.exception?.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+        } catch (e: ApiException) {
+            Toast.makeText(context, "Sign-In Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Column {
 
         Spacer(modifier = Modifier.height(30.dp))
 
@@ -201,21 +240,20 @@ fun LoginForm(){
                     Text(
                         text = "Enter your email address",
                         color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp,top=14.dp)
+                        modifier = Modifier.padding(start = 24.dp, top = 14.dp)
                     )
                 }
 
                 Image(
                     painter = emailIcon,
                     contentDescription = "Email",
-                    modifier=Modifier.padding(start = 340.dp, top= 14.dp)
-
+                    modifier = Modifier.padding(start = 340.dp, top = 14.dp)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-//TODO: 4. Enable function to toggle password visibility
+
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
             horizontalAlignment = Alignment.Start,
@@ -257,61 +295,85 @@ fun LoginForm(){
                     Text(
                         text = "Enter your password",
                         color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp,top=14.dp)
+                        modifier = Modifier.padding(start = 24.dp, top = 14.dp)
                     )
                 }
 
                 Image(
                     painter = passwordIcon,
                     contentDescription = "Password",
-                    modifier=Modifier.padding(start = 340.dp, top= 14.dp)
-
+                    modifier = Modifier.padding(start = 340.dp, top = 14.dp)
                 )
             }
         }
+
         Spacer(modifier = Modifier.height(12.dp))
 
-        //TODO: 1. enable the function to actually save passwords
         Row {
-            CustomCheckbox(checked = isChecked) { checked ->
-                isChecked = checked
-            }
+            CustomCheckbox(checked = isChecked) { checked -> isChecked = checked }
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = "Save Password",
                 fontWeight = FontWeight.Medium,
                 fontSize = 12.sp
-
             )
         }
+
         Spacer(modifier = Modifier.height(44.5.dp))
+
         LoginBtn(
             isChecked = isChecked,
             onClick = {
                 if (isChecked) {
                     // Save credentials using the utility class
                     SecureStorage.saveUserCredentials(context, email, password)
-                } else{
-                    Log.e(TAG,"did not save credentials")
+                } else {
+                    Log.e(TAG, "did not save credentials")
                 }
 
-                performLogin(auth, context as ComponentActivity, email, password, onSuccess = {  username, profileImageUri ->
+                performLogin(auth, context as ComponentActivity, email, password, onSuccess = { username, profileImageUri ->
                     val intent = Intent(context, MessageActivity::class.java)
                     intent.putExtra("username", username)
                     intent.putExtra("profileUri", profileImageUri)
                     context.startActivity(intent)
-                },
-
-//                    onFailure =)
-            )
+                })
             },
             onUnchecked = { /* Handle unchecked state */ }
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        SignUpText()
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Google Sign-In button
+        Button(
+            onClick = {
+                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = Color.White)
+                .padding(top = 16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.googleicon),  // Add Google logo resource
+                    contentDescription = "Google Sign-In",
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Sign in with Google",
+                    color = Color.White,
+                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SignUpText()
     }
 }
+
 
 //TODO: On log in, only the username pops up and not the image due to the image being called differently in the message and profile setup page.
 fun performLogin(
@@ -338,10 +400,8 @@ fun performLogin(
                         userId,
                         onSuccess,
                     )
-//                    fetchUserData(userId,onSuccess, onFailure = ) // Retrieve user data with userId
                 }
 
-                // You can perform additional actions after successful login if needed
 
                 Toast.makeText(context, "Successfully logged in", Toast.LENGTH_SHORT).show()
             } else {

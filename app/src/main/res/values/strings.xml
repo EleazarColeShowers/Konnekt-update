@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">InstaChatCompose</string>
+    <string name="default_web_client_id">201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com</string>
 </resources>

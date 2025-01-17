@@ -53,9 +53,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
@@ -85,30 +90,51 @@ class Konnekt: ComponentActivity() {
 }
 
 @Composable
-fun AddFriendsPage(currentUserId: String)  {
+fun AddFriendsPage(currentUserId: String) {
+    val navController = rememberNavController()
+
     Box(modifier = Modifier.fillMaxSize()) {
         val activity = LocalContext.current as? ComponentActivity
         val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
         val bio: String = activity?.intent?.getStringExtra("bio") ?: "DefaultBio"
         val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
+        // Main Content
         Column(
             modifier = Modifier.padding(horizontal = 15.dp)
         ) {
-
-            UserAddFriends(username = username, profilePic = profilePic)
-
-            UserReceivesRequest(currentUserId = currentUserId)
-//            MessageFrag(username = username)
-
+            NavHost(
+                navController = navController,
+                startDestination = "user_add_friends"
+            ) {
+                composable("user_add_friends") {
+                    UserAddFriends(
+                        username = username,
+                        profilePic = profilePic,
+                        onSettingsClick = { navController.navigate("settings") }
+                    )
+                }
+                composable("user_requests") {
+                    UserReceivesRequest(currentUserId = currentUserId)
+                }
+                composable("settings") {
+                    SettingsPage(navController) // Replace with your actual settings composable
+                }
+            }
         }
+
+        // BottomAppBar
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(80.dp)  
+                .height(80.dp)
         ) {
-            BottomAppBarKonnekt(username = username, profilePic = profilePic) 
+            BottomAppBarKonnekt(
+                username = username,
+                profilePic = profilePic,
+
+            )
         }
     }
 }
@@ -116,7 +142,7 @@ fun AddFriendsPage(currentUserId: String)  {
 
 
 @Composable
-fun UserAddFriends(username: String, profilePic: Uri) {
+fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Unit) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
 
@@ -232,7 +258,9 @@ fun UserAddFriends(username: String, profilePic: Uri) {
                 )
             }
 
-            Row {
+            Row (
+               modifier= Modifier.clickable { onSettingsClick() }
+            ){
                 Image(
                     painter = settingsIcon,
                     contentDescription = null,
@@ -398,26 +426,48 @@ data class FriendRequest(
     val status: String = "pending"
 )
 
-fun listenForFriendRequests(currentUserId: String, onNewRequest: (Pair<String, FriendRequest>) -> Unit) {
+fun listenForFriendRequests(
+    currentUserId: String,
+    onNewRequest: (Pair<String, FriendRequest>) -> Unit
+) {
+    // Get the Firebase database instance and reference for the user's received requests
     val database = FirebaseDatabase.getInstance()
     val requestsRef = database.getReference("received_requests/$currentUserId")
 
+    // Add a listener to detect changes in the received requests node
     requestsRef.addChildEventListener(object : ChildEventListener {
         override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+            val key = snapshot.key
             val request = snapshot.getValue(FriendRequest::class.java)
-            if (request != null) {
-                onNewRequest(snapshot.key!! to request)
+
+            if (key != null && request != null) {
+                // Pass the new request data to the callback
+                onNewRequest(key to request)
+            } else {
+                // Log or handle cases where the key or request is null
+                println("Invalid request: key=$key, request=$request")
             }
         }
 
-        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
-        override fun onChildRemoved(snapshot: DataSnapshot) {}
-        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+            // Handle updates to existing friend requests, if necessary
+        }
+
+        override fun onChildRemoved(snapshot: DataSnapshot) {
+            // Handle the removal of friend requests, if necessary
+        }
+
+        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
+            // Handle reordering of friend requests, if necessary
+        }
+
         override fun onCancelled(error: DatabaseError) {
+            // Log or handle the error appropriately
             println("Failed to listen for friend requests: ${error.message}")
         }
     })
 }
+
 
 fun acceptFriendRequest(requestId: String, senderId: String, receiverId: String) {
     val database = FirebaseDatabase.getInstance().reference
@@ -634,5 +684,51 @@ fun BottomAppBarItemKonnekt(
             fontSize = 12.sp,
             color = if (isActive) Color(0xFF2F9ECE) else Color(0xFF696969) // Change text color based on active/passive state
         )
+    }
+}
+
+
+@Composable
+fun SettingsPage(navController: NavController) {
+    val context = LocalContext.current
+    val auth = FirebaseAuth.getInstance()
+
+    // Handle logout
+    fun logout() {
+        auth.signOut()
+        val intent= Intent(context, LoginActivity::class.java)
+        context.startActivity(intent)
+    }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(
+            text = "Settings",
+            style = TextStyle(
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Example setting options
+        Text(text = "Option 1: Change Username")
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(text = "Option 2: Change Profile Picture")
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(text = "Option 3: Privacy Settings")
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Button(onClick = { /* Handle save or any action */ }) {
+            Text("Save Settings")
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Logout Button
+        Button(onClick = { logout() }) {
+            Text("Logout")
+        }
     }
 }
