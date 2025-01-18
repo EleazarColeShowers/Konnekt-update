@@ -108,14 +108,15 @@ fun AddFriendsPage(currentUserId: String) {
                 startDestination = "user_add_friends"
             ) {
                 composable("user_add_friends") {
-                    UserAddFriends(
-                        username = username,
-                        profilePic = profilePic,
-                        onSettingsClick = { navController.navigate("settings") }
-                    )
-                }
-                composable("user_requests") {
-                    UserReceivesRequest(currentUserId = currentUserId)
+                    Column {
+                        UserAddFriends(
+                            username = username,
+                            profilePic = profilePic,
+                            onSettingsClick = { navController.navigate("settings") }
+                        )
+                        ReceivedRequestsScreen()
+//                        UserReceivesRequest(currentUserId = currentUserId)
+                    }
                 }
                 composable("settings") {
                     SettingsPage(navController) // Replace with your actual settings composable
@@ -191,41 +192,44 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
 
     loadAllUsers()
 
- fun sendFriendRequest(targetUserId: String) {
-     val database = FirebaseDatabase.getInstance().reference
-     val currentUser = FirebaseAuth.getInstance().currentUser
-     val currentUserId = currentUser?.uid
+    fun sendFriendRequest(targetUserId: String) {
+        val database = FirebaseDatabase.getInstance().reference
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val currentUserId = currentUser?.uid
 
-     if (currentUserId != null) {
-         val friendRequest = mapOf(
-             "from" to currentUserId,
-             "to" to targetUserId,
-             "status" to "pending"
-         )
+        if (currentUserId != null) {
+            // Create the friend request map with the correct "from" and "to" user IDs
+            val friendRequest = mapOf(
+                "from" to currentUserId, // Current user sending the request
+                "to" to targetUserId,   // Target user receiving the request
+                "status" to "pending"   // Default status of the request
+            )
 
-         // Generate a unique key for the new friend request
-         val newRequestKey = database.child("sent_requests").child(currentUserId).push().key
+            // Generate a unique key for the new friend request
+            val newRequestKey = database.child("sent_requests").child(currentUserId).push().key
 
-         if (newRequestKey != null) {
-             val updates = mapOf(
-                 "/sent_requests/$currentUserId/$newRequestKey" to friendRequest,
-                 "/received_requests/$targetUserId/$newRequestKey" to friendRequest
-             )
+            if (newRequestKey != null) {
+                // Create the updates map for both sent and received requests
+                val updates = mapOf(
+                    "/sent_requests/$currentUserId/$newRequestKey" to friendRequest,
+                    "/received_requests/$targetUserId/$newRequestKey" to friendRequest
+                )
 
-             database.updateChildren(updates)
-                 .addOnSuccessListener {
-                     Log.d("FriendRequest", "Friend request sent successfully")
-                 }
-                 .addOnFailureListener { exception ->
-                     Log.e("FriendRequest", "Error sending friend request", exception)
-                 }
-         } else {
-             Log.e("FriendRequest", "Failed to generate new request key")
-         }
-     } else {
-         Log.e("FriendRequest", "User not logged in")
-     }
- }
+                // Update the database atomically
+                database.updateChildren(updates)
+                    .addOnSuccessListener {
+                        Log.d("FriendRequest", "Friend request sent successfully")
+                    }
+                    .addOnFailureListener { exception ->
+                        Log.e("FriendRequest", "Error sending friend request", exception)
+                    }
+            } else {
+                Log.e("FriendRequest", "Failed to generate new request key")
+            }
+        } else {
+            Log.e("FriendRequest", "User not logged in")
+        }
+    }
 
     Column {
         Row(
@@ -426,180 +430,226 @@ data class FriendRequest(
     val status: String = "pending"
 )
 
-fun listenForFriendRequests(
-    currentUserId: String,
-    onNewRequest: (Pair<String, FriendRequest>) -> Unit
-) {
-    // Get the Firebase database instance and reference for the user's received requests
-    val database = FirebaseDatabase.getInstance()
-    val requestsRef = database.getReference("received_requests/$currentUserId")
-
-    // Add a listener to detect changes in the received requests node
-    requestsRef.addChildEventListener(object : ChildEventListener {
-        override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-            val key = snapshot.key
-            val request = snapshot.getValue(FriendRequest::class.java)
-
-            if (key != null && request != null) {
-                // Pass the new request data to the callback
-                onNewRequest(key to request)
-            } else {
-                // Log or handle cases where the key or request is null
-                println("Invalid request: key=$key, request=$request")
-            }
-        }
-
-        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
-            // Handle updates to existing friend requests, if necessary
-        }
-
-        override fun onChildRemoved(snapshot: DataSnapshot) {
-            // Handle the removal of friend requests, if necessary
-        }
-
-        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
-            // Handle reordering of friend requests, if necessary
-        }
-
-        override fun onCancelled(error: DatabaseError) {
-            // Log or handle the error appropriately
-            println("Failed to listen for friend requests: ${error.message}")
-        }
-    })
-}
-
-
-fun acceptFriendRequest(requestId: String, senderId: String, receiverId: String) {
+fun fetchReceivedRequests(callback: (List<FriendRequest>) -> Unit) {
     val database = FirebaseDatabase.getInstance().reference
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    val currentUserId = currentUser?.uid
 
-    val updates = mapOf(
-        "/friend_requests/sent/$senderId/$requestId/status" to "accepted",
-        "/friend_requests/received/$receiverId/$requestId/status" to "accepted",
-        "/friends/$senderId/$receiverId" to true,
-        "/friends/$receiverId/$senderId" to true
-    )
-
-    database.updateChildren(updates).addOnCompleteListener { task ->
-        if (task.isSuccessful) {
-            Log.d("AcceptRequest", "Friend request accepted successfully")
-        } else {
-            Log.e("AcceptRequest", "Error accepting friend request", task.exception)
-        }
-    }
-}
-
-fun removeFriendRequest(requestId: String, senderId: String, receiverId: String) {
-    val database = FirebaseDatabase.getInstance().reference
-
-    val updates = mapOf(
-        "/friend_requests/sent/$senderId/$requestId" to null,
-        "/friend_requests/received/$receiverId/$requestId" to null
-    )
-
-    database.updateChildren(updates).addOnCompleteListener { task ->
-        if (task.isSuccessful) {
-            Log.d("RemoveRequest", "Friend request removed successfully")
-        } else {
-            Log.e("RemoveRequest", "Error removing friend request", task.exception)
-        }
-    }
-}
-
-@Composable
-fun UserReceivesRequest(currentUserId: String) {
-    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
-
-    LaunchedEffect(currentUserId) {
-        listenForFriendRequests(currentUserId) { newRequest ->
-            if (!friendRequests.any { it.first == newRequest.first }) {
-                friendRequests.add(newRequest)
-            }
-        }
-    }
-
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 16.dp)
-    ) {
-        Text(
-            text = "Friend Requests",
-            style = TextStyle(
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (friendRequests.isEmpty()) {
-            Text(
-                text = "No new friend requests",
-                style = TextStyle(
-                    color = Color.Gray,
-                    fontSize = 16.sp
-                ),
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(friendRequests) { (requestId, friendRequest) ->
-                    FriendRequestItem(
-                        friendRequest = friendRequest,
-                        onAccept = {
-                            acceptFriendRequest(
-                                requestId = requestId,
-                                senderId = friendRequest.from,
-                                receiverId = currentUserId
-                            )
-                            // Remove accepted request from the list
-                            friendRequests.removeIf { it.first == requestId }
-                        },
-                        onDecline = {
-                            removeFriendRequest(
-                                requestId = requestId,
-                                senderId = friendRequest.from,
-                                receiverId = currentUserId
-                            )
-                            // Remove declined request from the list
-                            friendRequests.removeIf { it.first == requestId }
+    if (currentUserId != null) {
+        database.child("received_requests").child(currentUserId)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val receivedRequests = mutableListOf<FriendRequest>()
+                    for (childSnapshot in snapshot.children) {
+                        val request = childSnapshot.getValue(FriendRequest::class.java)
+                        if (request != null) {
+                            receivedRequests.add(request)
                         }
-                    )
+                    }
+                    callback(receivedRequests)
                 }
-            }
-        }
-    }
-}
 
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("FetchRequests", "Error fetching received requests", error.toException())
+                }
+            })
+    } else {
+        Log.e("FetchRequests", "User not logged in")
+    }
+}
 @Composable
-fun FriendRequestItem(
-    friendRequest: FriendRequest,
-    onAccept: () -> Unit,
-    onDecline: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column {
-            Text(text = "From: ${friendRequest.from}", fontWeight = FontWeight.Bold)
-            Text(text = "Status: ${friendRequest.status}", color = Color.Gray)
+fun ReceivedRequestsScreen() {
+    val receivedRequests = remember { mutableStateOf(listOf<FriendRequest>()) }
+
+    LaunchedEffect(Unit) {
+        fetchReceivedRequests { requests ->
+            receivedRequests.value = requests
         }
-        Row {
-            Button(onClick = onAccept) {
-                Text("Accept")
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = onDecline) {
-                Text("Decline")
-            }
+    }
+
+    LazyColumn {
+        items(receivedRequests.value) { request ->
+            Text(text = "From: ${request.from}", style = MaterialTheme.typography.headlineSmall)
+            Text(text = "Status: ${request.status}", style = MaterialTheme.typography.headlineSmall)
         }
     }
 }
+//fun listenForFriendRequests(
+//    currentUserId: String,
+//    onNewRequest: (Pair<String, FriendRequest>) -> Unit
+//) {
+//    val database = FirebaseDatabase.getInstance()
+//    val requestsRef = database.getReference("received_requests/$currentUserId")
+//
+//    Log.d("FriendRequestListener", "Listening for requests for user: $currentUserId")
+//
+//    requestsRef.addChildEventListener(object : ChildEventListener {
+//        override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+//            val key = snapshot.key
+//            val request = snapshot.getValue(FriendRequest::class.java)
+//
+//            if (key != null && request != null) {
+//                Log.d("FriendRequestListener", "Parsed FriendRequest: $request")
+//                if (request.to == currentUserId) { // Ensure request is for the current user
+//                    onNewRequest(key to request)
+//                } else {
+//                    Log.d("FriendRequestListener", "Request ignored: Not for current user.")
+//                }
+//            } else {
+//                Log.e("FriendRequestListener", "Failed to parse FriendRequest: key=$key, snapshot=${snapshot.value}")
+//            }
+//        }
+//        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+//            Log.d("FriendRequestListener", "Friend request updated: ${snapshot.key}")
+//        }
+//
+//        override fun onChildRemoved(snapshot: DataSnapshot) {
+//            Log.d("FriendRequestListener", "Friend request removed: ${snapshot.key}")
+//        }
+//
+//        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
+//            Log.d("FriendRequestListener", "Friend request moved: ${snapshot.key}")
+//        }
+//
+//        override fun onCancelled(error: DatabaseError) {
+//            Log.e("FriendRequestListener", "Failed to listen for requests: ${error.message}")
+//        }
+//    })
+//}
+//
+//fun acceptFriendRequest(requestId: String, senderId: String, receiverId: String) {
+//    val database = FirebaseDatabase.getInstance().reference
+//
+//    val updates = mapOf(
+//        "/friend_requests/sent/$senderId/$requestId/status" to "accepted",
+//        "/friend_requests/received/$receiverId/$requestId/status" to "accepted",
+//        "/friends/$senderId/$receiverId" to true,
+//        "/friends/$receiverId/$senderId" to true
+//    )
+//
+//    database.updateChildren(updates).addOnCompleteListener { task ->
+//        if (task.isSuccessful) {
+//            Log.d("AcceptRequest", "Friend request accepted successfully")
+//        } else {
+//            Log.e("AcceptRequest", "Error accepting friend request", task.exception)
+//        }
+//    }
+//}
+//
+//fun removeFriendRequest(requestId: String, senderId: String, receiverId: String) {
+//    val database = FirebaseDatabase.getInstance().reference
+//
+//    val updates = mapOf(
+//        "/friend_requests/sent/$senderId/$requestId" to null,
+//        "/friend_requests/received/$receiverId/$requestId" to null
+//    )
+//
+//    database.updateChildren(updates).addOnCompleteListener { task ->
+//        if (task.isSuccessful) {
+//            Log.d("RemoveRequest", "Friend request removed successfully")
+//        } else {
+//            Log.e("RemoveRequest", "Error removing friend request", task.exception)
+//        }
+//    }
+//}
+//
+//@Composable
+//fun UserReceivesRequest(currentUserId: String) {
+//    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
+//
+//    LaunchedEffect(currentUserId) {
+//        listenForFriendRequests(currentUserId) { newRequest ->
+//            val existingIndex = friendRequests.indexOfFirst { it.first == newRequest.first }
+//            if (existingIndex >= 0) {
+//                friendRequests[existingIndex] = newRequest // Update existing
+//            } else {
+//                friendRequests.add(newRequest) // Add new
+//            }
+//        }
+//    }
+//    Column(
+//        modifier = Modifier
+//            .fillMaxWidth()
+//            .padding(top = 16.dp)
+//    ) {
+//        Text(
+//            text = "Friend Requests",
+//            style = TextStyle(
+//                fontSize = 20.sp,
+//                fontWeight = FontWeight.Bold,
+//                color = Color.Black
+//            )
+//        )
+//
+//        Spacer(modifier = Modifier.height(8.dp))
+//
+//        if (friendRequests.isEmpty()) {
+//            Text(
+//                text = "No new friend requests",
+//                style = TextStyle(
+//                    color = Color.Gray,
+//                    fontSize = 16.sp
+//                ),
+//                modifier = Modifier.align(Alignment.CenterHorizontally)
+//            )
+//        } else {
+//            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+//                items(friendRequests.filter { it.second.to == currentUserId }) { (requestId, friendRequest) ->
+//                    FriendRequestItem(
+//                        friendRequest = friendRequest,
+//                        onAccept = {
+//                            acceptFriendRequest(
+//                                requestId = requestId,
+//                                senderId = friendRequest.from,
+//                                receiverId = currentUserId
+//                            )
+//                            // Remove accepted request from the list
+//                            friendRequests.removeIf { it.first == requestId }
+//                        },
+//                        onDecline = {
+//                            removeFriendRequest(
+//                                requestId = requestId,
+//                                senderId = friendRequest.from,
+//                                receiverId = currentUserId
+//                            )
+//                            // Remove declined request from the list
+//                            friendRequests.removeIf { it.first == requestId }
+//                        }
+//                    )
+//                }
+//            }
+//        }
+//    }
+//}
+//
+//@Composable
+//fun FriendRequestItem(
+//    friendRequest: FriendRequest,
+//    onAccept: () -> Unit,
+//    onDecline: () -> Unit
+//) {
+//    Row(
+//        modifier = Modifier
+//            .fillMaxWidth()
+//            .padding(8.dp),
+//        horizontalArrangement = Arrangement.SpaceBetween
+//    ) {
+//        Column {
+//            Text(text = "From: ${friendRequest.from}", fontWeight = FontWeight.Bold)
+//            Text(text = "Status: ${friendRequest.status}", color = Color.Gray)
+//        }
+//        Row {
+//            Button(onClick = onAccept) {
+//                Text("Accept")
+//            }
+//            Spacer(modifier = Modifier.width(8.dp))
+//            Button(onClick = onDecline) {
+//                Text("Decline")
+//            }
+//        }
+//    }
+//}
+
 enum class BottomAppBarItem {
     Messages,
     Calls,
