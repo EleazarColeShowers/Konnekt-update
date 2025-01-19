@@ -57,40 +57,97 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
-class Konnekt: ComponentActivity() {
+//class Konnekt: ComponentActivity() {
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//        val currentUser = FirebaseAuth.getInstance().currentUser
+//        val currentUsername = currentUser?.displayName ?: "AnonymousUser" // Use displayName for the username
+//        if (currentUser == null) return
+//        setContent {
+//            InstaChatComposeTheme {
+//                Surface(
+//                    modifier = Modifier.fillMaxSize(),
+//                    color = MaterialTheme.colorScheme.background
+//                ) {
+//                    Column(modifier= Modifier.fillMaxSize()) {
+//                        AddFriendsPage(currentUsername = currentUsername)
+//
+//                    }
+//                }
+//            }
+//        }
+//    }
+//}
+class Konnekt : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Get the current user UID from Firebase Authentication
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        setContent {
-            InstaChatComposeTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    Column(modifier= Modifier.fillMaxSize()) {
-                        AddFriendsPage(currentUserId = currentUserId)
+
+        // Get a reference to the Firebase Realtime Database
+        val database = FirebaseDatabase.getInstance().reference
+        val userRef = database.child("users").child(currentUserId)
+
+        // Fetch the username from the users node
+        userRef.child("username").get().addOnSuccessListener { snapshot ->
+            // Check if the username exists, and fallback to "AnonymousUser" if not
+            val currentUsername = snapshot.value as? String ?: "AnonymousUser"
+
+            // Set content after retrieving the username
+            setContent {
+                InstaChatComposeTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Pass the fetched username to the AddFriendsPage composable
+                            AddFriendsPage(currentUsername = currentUsername)
+                        }
+                    }
+                }
+            }
+        }.addOnFailureListener { exception ->
+            // Log failure to retrieve username
+            Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
+
+            // Fallback to default username if fetching fails
+            val currentUsername = "AnonymousUser"
+            setContent {
+                InstaChatComposeTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            AddFriendsPage(currentUsername = currentUsername)
+                        }
                     }
                 }
             }
         }
     }
 }
-
 @Composable
-fun AddFriendsPage(currentUserId: String) {
+fun AddFriendsPage(currentUsername: String) {
     val navController = rememberNavController()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -114,8 +171,8 @@ fun AddFriendsPage(currentUserId: String) {
                             profilePic = profilePic,
                             onSettingsClick = { navController.navigate("settings") }
                         )
-                        ReceivedRequestsScreen()
-//                        UserReceivesRequest(currentUserId = currentUserId)
+//                        ReceivedRequestsScreen()
+                        UserReceivesRequest(currentUsername)
                     }
                 }
                 composable("settings") {
@@ -219,6 +276,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                 database.updateChildren(updates)
                     .addOnSuccessListener {
                         Log.d("FriendRequest", "Friend request sent successfully")
+                        Log.d("DB_DEBUG", "Saved Request: $friendRequest")
                     }
                     .addOnFailureListener { exception ->
                         Log.e("FriendRequest", "Error sending friend request", exception)
@@ -430,226 +488,170 @@ data class FriendRequest(
     val status: String = "pending"
 )
 
-fun fetchReceivedRequests(callback: (List<FriendRequest>) -> Unit) {
-    val database = FirebaseDatabase.getInstance().reference
-    val currentUser = FirebaseAuth.getInstance().currentUser
-    val currentUserId = currentUser?.uid
+//fun loadReceivedRequests(username: String, onRequestsLoaded: (List<FriendRequest>) -> Unit) {
+//    val database = FirebaseDatabase.getInstance().getReference("received_requests")
+//
+//    // Query the database for requests based on the username
+//    database.child(username).get().addOnSuccessListener { snapshot ->
+//        // Check if the snapshot contains any data
+//        if (snapshot.exists()) {
+//            val requests = mutableListOf<FriendRequest>()
+//
+//            // Iterate through the received requests and map the data
+//            for (requestSnapshot in snapshot.children) {
+//                val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
+//                val to = requestSnapshot.child("to").getValue(String::class.java) ?: ""
+//                val status = requestSnapshot.child("status").getValue(String::class.java) ?: "pending"
+//
+//                // Create FriendRequest object for each entry
+//                requests.add(FriendRequest(from, to, status))
+//            }
+//
+//            // Call the callback function with the loaded requests
+//            onRequestsLoaded(requests)
+//        } else {
+//            // If no requests are found, pass an empty list
+//            onRequestsLoaded(emptyList())
+//        }
+//    }.addOnFailureListener { exception ->
+//        Log.e("Firebase", "Failed to load received requests for username: $username", exception)
+//        // Handle failure by passing an empty list
+//        onRequestsLoaded(emptyList())
+//    }
+//}
 
-    if (currentUserId != null) {
-        database.child("received_requests").child(currentUserId)
-            .addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val receivedRequests = mutableListOf<FriendRequest>()
-                    for (childSnapshot in snapshot.children) {
-                        val request = childSnapshot.getValue(FriendRequest::class.java)
-                        if (request != null) {
-                            receivedRequests.add(request)
-                        }
+fun loadReceivedRequestsWithDetails(
+    username: String,
+    onRequestsLoaded: (List<Pair<FriendRequest, Map<String, String>>>) -> Unit
+) {
+    val database = FirebaseDatabase.getInstance().getReference("received_requests")
+    val usersDatabase = FirebaseDatabase.getInstance().getReference("users")
+
+    database.child(username).get().addOnSuccessListener { snapshot ->
+        if (snapshot.exists()) {
+            val requests = mutableListOf<Pair<FriendRequest, Map<String, String>>>()
+
+            val fetchDetailsTasks = snapshot.children.map { requestSnapshot ->
+                val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
+                val to = requestSnapshot.child("to").getValue(String::class.java) ?: ""
+                val status = requestSnapshot.child("status").getValue(String::class.java) ?: "pending"
+
+                val request = FriendRequest(from, to, status)
+                val detailsTask = usersDatabase.child(from).get().continueWith { userSnapshotTask ->
+                    val userSnapshot = userSnapshotTask.result
+                    val userDetails = if (userSnapshot.exists()) {
+                        mapOf(
+                            "username" to (userSnapshot.child("username").getValue(String::class.java) ?: "Unknown User"),
+                            "profileImageUri" to (userSnapshot.child("profileImageUri").getValue(String::class.java) ?: "")
+                        )
+                    } else {
+                        mapOf("username" to "Unknown User", "profileImageUri" to "")
                     }
-                    callback(receivedRequests)
+                    Pair(request, userDetails)
                 }
+                detailsTask
+            }
 
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e("FetchRequests", "Error fetching received requests", error.toException())
-                }
-            })
-    } else {
-        Log.e("FetchRequests", "User not logged in")
+            Tasks.whenAllSuccess<Pair<FriendRequest, Map<String, String>>>(fetchDetailsTasks).addOnSuccessListener { detailedRequests ->
+                onRequestsLoaded(detailedRequests)
+            }
+        } else {
+            onRequestsLoaded(emptyList())
+        }
+    }.addOnFailureListener { exception ->
+        Log.e("Firebase", "Failed to load received requests for username: $username", exception)
+        onRequestsLoaded(emptyList())
     }
 }
 @Composable
-fun ReceivedRequestsScreen() {
-    val receivedRequests = remember { mutableStateOf(listOf<FriendRequest>()) }
+fun UserReceivesRequest(currentUsername: String) {
+    val friendRequests = remember { mutableStateListOf<Pair<FriendRequest, Map<String, String>>>() }
 
-    LaunchedEffect(Unit) {
-        fetchReceivedRequests { requests ->
-            receivedRequests.value = requests
+    // Load the received requests for the current user
+    LaunchedEffect(currentUsername) {
+        loadReceivedRequestsWithDetails(currentUsername) { requests ->
+            friendRequests.clear()
+            friendRequests.addAll(requests)
         }
     }
 
-    LazyColumn {
-        items(receivedRequests.value) { request ->
-            Text(text = "From: ${request.from}", style = MaterialTheme.typography.headlineSmall)
-            Text(text = "Status: ${request.status}", style = MaterialTheme.typography.headlineSmall)
+    // UI to display the requests
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Received Friend Requests", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+
+        LazyColumn {
+            items(friendRequests) { (request, userDetails) ->
+                val username = userDetails["username"] ?: "Unknown User"
+                val profileImageUri = userDetails["profileImageUri"]
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!profileImageUri.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = profileImageUri,
+                            contentDescription = "Profile Image",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column {
+                        Text(text = username, fontWeight = FontWeight.Bold)
+                        Text(text = "Status: ${request.status}")
+                    }
+                }
+            }
         }
     }
 }
-//fun listenForFriendRequests(
-//    currentUserId: String,
-//    onNewRequest: (Pair<String, FriendRequest>) -> Unit
-//) {
-//    val database = FirebaseDatabase.getInstance()
-//    val requestsRef = database.getReference("received_requests/$currentUserId")
-//
-//    Log.d("FriendRequestListener", "Listening for requests for user: $currentUserId")
-//
-//    requestsRef.addChildEventListener(object : ChildEventListener {
-//        override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-//            val key = snapshot.key
-//            val request = snapshot.getValue(FriendRequest::class.java)
-//
-//            if (key != null && request != null) {
-//                Log.d("FriendRequestListener", "Parsed FriendRequest: $request")
-//                if (request.to == currentUserId) { // Ensure request is for the current user
-//                    onNewRequest(key to request)
-//                } else {
-//                    Log.d("FriendRequestListener", "Request ignored: Not for current user.")
-//                }
-//            } else {
-//                Log.e("FriendRequestListener", "Failed to parse FriendRequest: key=$key, snapshot=${snapshot.value}")
-//            }
-//        }
-//        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
-//            Log.d("FriendRequestListener", "Friend request updated: ${snapshot.key}")
-//        }
-//
-//        override fun onChildRemoved(snapshot: DataSnapshot) {
-//            Log.d("FriendRequestListener", "Friend request removed: ${snapshot.key}")
-//        }
-//
-//        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
-//            Log.d("FriendRequestListener", "Friend request moved: ${snapshot.key}")
-//        }
-//
-//        override fun onCancelled(error: DatabaseError) {
-//            Log.e("FriendRequestListener", "Failed to listen for requests: ${error.message}")
-//        }
-//    })
-//}
-//
-//fun acceptFriendRequest(requestId: String, senderId: String, receiverId: String) {
-//    val database = FirebaseDatabase.getInstance().reference
-//
-//    val updates = mapOf(
-//        "/friend_requests/sent/$senderId/$requestId/status" to "accepted",
-//        "/friend_requests/received/$receiverId/$requestId/status" to "accepted",
-//        "/friends/$senderId/$receiverId" to true,
-//        "/friends/$receiverId/$senderId" to true
-//    )
-//
-//    database.updateChildren(updates).addOnCompleteListener { task ->
-//        if (task.isSuccessful) {
-//            Log.d("AcceptRequest", "Friend request accepted successfully")
-//        } else {
-//            Log.e("AcceptRequest", "Error accepting friend request", task.exception)
-//        }
-//    }
-//}
-//
-//fun removeFriendRequest(requestId: String, senderId: String, receiverId: String) {
-//    val database = FirebaseDatabase.getInstance().reference
-//
-//    val updates = mapOf(
-//        "/friend_requests/sent/$senderId/$requestId" to null,
-//        "/friend_requests/received/$receiverId/$requestId" to null
-//    )
-//
-//    database.updateChildren(updates).addOnCompleteListener { task ->
-//        if (task.isSuccessful) {
-//            Log.d("RemoveRequest", "Friend request removed successfully")
-//        } else {
-//            Log.e("RemoveRequest", "Error removing friend request", task.exception)
-//        }
-//    }
-//}
-//
-//@Composable
-//fun UserReceivesRequest(currentUserId: String) {
-//    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
-//
-//    LaunchedEffect(currentUserId) {
-//        listenForFriendRequests(currentUserId) { newRequest ->
-//            val existingIndex = friendRequests.indexOfFirst { it.first == newRequest.first }
-//            if (existingIndex >= 0) {
-//                friendRequests[existingIndex] = newRequest // Update existing
-//            } else {
-//                friendRequests.add(newRequest) // Add new
-//            }
-//        }
-//    }
-//    Column(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .padding(top = 16.dp)
-//    ) {
-//        Text(
-//            text = "Friend Requests",
-//            style = TextStyle(
-//                fontSize = 20.sp,
-//                fontWeight = FontWeight.Bold,
-//                color = Color.Black
-//            )
-//        )
-//
-//        Spacer(modifier = Modifier.height(8.dp))
-//
-//        if (friendRequests.isEmpty()) {
-//            Text(
-//                text = "No new friend requests",
-//                style = TextStyle(
-//                    color = Color.Gray,
-//                    fontSize = 16.sp
-//                ),
-//                modifier = Modifier.align(Alignment.CenterHorizontally)
-//            )
-//        } else {
-//            LazyColumn(modifier = Modifier.fillMaxWidth()) {
-//                items(friendRequests.filter { it.second.to == currentUserId }) { (requestId, friendRequest) ->
-//                    FriendRequestItem(
-//                        friendRequest = friendRequest,
-//                        onAccept = {
-//                            acceptFriendRequest(
-//                                requestId = requestId,
-//                                senderId = friendRequest.from,
-//                                receiverId = currentUserId
-//                            )
-//                            // Remove accepted request from the list
-//                            friendRequests.removeIf { it.first == requestId }
-//                        },
-//                        onDecline = {
-//                            removeFriendRequest(
-//                                requestId = requestId,
-//                                senderId = friendRequest.from,
-//                                receiverId = currentUserId
-//                            )
-//                            // Remove declined request from the list
-//                            friendRequests.removeIf { it.first == requestId }
-//                        }
-//                    )
-//                }
-//            }
-//        }
-//    }
-//}
-//
-//@Composable
-//fun FriendRequestItem(
-//    friendRequest: FriendRequest,
-//    onAccept: () -> Unit,
-//    onDecline: () -> Unit
-//) {
-//    Row(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .padding(8.dp),
-//        horizontalArrangement = Arrangement.SpaceBetween
-//    ) {
-//        Column {
-//            Text(text = "From: ${friendRequest.from}", fontWeight = FontWeight.Bold)
-//            Text(text = "Status: ${friendRequest.status}", color = Color.Gray)
-//        }
-//        Row {
-//            Button(onClick = onAccept) {
-//                Text("Accept")
-//            }
-//            Spacer(modifier = Modifier.width(8.dp))
-//            Button(onClick = onDecline) {
-//                Text("Decline")
-//            }
-//        }
-//    }
-//}
 
+
+//@Composable
+//fun UserReceivesRequest(currentUsername: String) {
+//    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
+//    var receivedRequests by remember { mutableStateOf<List<FriendRequest>>(emptyList()) }
+//
+//    // Load the received requests for the current user
+//    loadReceivedRequests(currentUsername) { requests ->
+//        // Update the state with the loaded requests
+//        receivedRequests = requests
+//    }
+//
+//    // UI to display the requests
+//    Column {
+//        Text("Received Friend Requests", fontWeight = FontWeight.Bold)
+//
+//        LazyColumn {
+//            items(receivedRequests) { request ->
+//                // UI to display each request
+//                Row(
+//                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+//                    horizontalArrangement = Arrangement.SpaceBetween
+//                ) {
+//                    Text("From: ${request.from}")
+//                    Text("Status: ${request.status}")
+//                }
+//            }
+//        }
+//    }
+//
+//}
 enum class BottomAppBarItem {
     Messages,
     Calls,
