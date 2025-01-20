@@ -488,38 +488,6 @@ data class FriendRequest(
     val status: String = "pending"
 )
 
-//fun loadReceivedRequests(username: String, onRequestsLoaded: (List<FriendRequest>) -> Unit) {
-//    val database = FirebaseDatabase.getInstance().getReference("received_requests")
-//
-//    // Query the database for requests based on the username
-//    database.child(username).get().addOnSuccessListener { snapshot ->
-//        // Check if the snapshot contains any data
-//        if (snapshot.exists()) {
-//            val requests = mutableListOf<FriendRequest>()
-//
-//            // Iterate through the received requests and map the data
-//            for (requestSnapshot in snapshot.children) {
-//                val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
-//                val to = requestSnapshot.child("to").getValue(String::class.java) ?: ""
-//                val status = requestSnapshot.child("status").getValue(String::class.java) ?: "pending"
-//
-//                // Create FriendRequest object for each entry
-//                requests.add(FriendRequest(from, to, status))
-//            }
-//
-//            // Call the callback function with the loaded requests
-//            onRequestsLoaded(requests)
-//        } else {
-//            // If no requests are found, pass an empty list
-//            onRequestsLoaded(emptyList())
-//        }
-//    }.addOnFailureListener { exception ->
-//        Log.e("Firebase", "Failed to load received requests for username: $username", exception)
-//        // Handle failure by passing an empty list
-//        onRequestsLoaded(emptyList())
-//    }
-//}
-
 fun loadReceivedRequestsWithDetails(
     username: String,
     onRequestsLoaded: (List<Pair<FriendRequest, Map<String, String>>>) -> Unit
@@ -563,6 +531,7 @@ fun loadReceivedRequestsWithDetails(
         onRequestsLoaded(emptyList())
     }
 }
+
 @Composable
 fun UserReceivesRequest(currentUsername: String) {
     val friendRequests = remember { mutableStateListOf<Pair<FriendRequest, Map<String, String>>>() }
@@ -576,8 +545,17 @@ fun UserReceivesRequest(currentUsername: String) {
     }
 
     // UI to display the requests
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Received Friend Requests", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Received Friend Requests",
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
 
         LazyColumn {
             items(friendRequests) { (request, userDetails) ->
@@ -587,33 +565,70 @@ fun UserReceivesRequest(currentUsername: String) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp)
+                        .padding(vertical = 8.dp)
                         .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (!profileImageUri.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = profileImageUri,
-                            contentDescription = "Profile Image",
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (!profileImageUri.isNullOrEmpty()) {
+                            AsyncImage(
+                                model = profileImageUri,
+                                contentDescription = "Profile Image",
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Text(
+                            text = username,
+                            style = TextStyle(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF696969)
+                            )
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                // Handle accept request
+                                handleFriendRequest(request, isAccepted = true)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .width(80.dp) // Adjust the width as needed
+                        ) {
+                            Text(text = "Accept", fontSize = 12.sp, color = Color.White)
+                        }
 
-                    Column {
-                        Text(text = username, fontWeight = FontWeight.Bold)
-                        Text(text = "Status: ${request.status}")
+                        Button(
+                            onClick = {
+                                // Handle decline request
+                                handleFriendRequest(request, isAccepted = false)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .width(80.dp) // Adjust the width as needed
+                        ) {
+                            Text(text = "Decline", fontSize = 12.sp, color = Color.White)
+                        }
                     }
                 }
             }
@@ -621,37 +636,16 @@ fun UserReceivesRequest(currentUsername: String) {
     }
 }
 
+// Function to handle friend requests
+private fun handleFriendRequest(request: FriendRequest, isAccepted: Boolean) {
+    // Implement your logic to accept or decline the request
+    if (isAccepted) {
+        println("Accepted request from ${request.from}")
+    } else {
+        println("Declined request from ${request.from}")
+    }
+}
 
-//@Composable
-//fun UserReceivesRequest(currentUsername: String) {
-//    val friendRequests = remember { mutableStateListOf<Pair<String, FriendRequest>>() }
-//    var receivedRequests by remember { mutableStateOf<List<FriendRequest>>(emptyList()) }
-//
-//    // Load the received requests for the current user
-//    loadReceivedRequests(currentUsername) { requests ->
-//        // Update the state with the loaded requests
-//        receivedRequests = requests
-//    }
-//
-//    // UI to display the requests
-//    Column {
-//        Text("Received Friend Requests", fontWeight = FontWeight.Bold)
-//
-//        LazyColumn {
-//            items(receivedRequests) { request ->
-//                // UI to display each request
-//                Row(
-//                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-//                    horizontalArrangement = Arrangement.SpaceBetween
-//                ) {
-//                    Text("From: ${request.from}")
-//                    Text("Status: ${request.status}")
-//                }
-//            }
-//        }
-//    }
-//
-//}
 enum class BottomAppBarItem {
     Messages,
     Calls,
