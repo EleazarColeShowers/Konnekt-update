@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -557,7 +558,9 @@ fun UserReceivesRequest(currentUsername: String) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        LazyColumn {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             items(friendRequests) { (request, userDetails) ->
                 val username = userDetails["username"] ?: "Unknown User"
                 val profileImageUri = userDetails["profileImageUri"]
@@ -566,8 +569,7 @@ fun UserReceivesRequest(currentUsername: String) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                        .padding(16.dp),
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
@@ -606,29 +608,21 @@ fun UserReceivesRequest(currentUsername: String) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                // Handle accept request
                                 handleFriendRequest(request, isAccepted = true)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
                             modifier = Modifier
                                 .height(36.dp)
-                                .width(80.dp) // Adjust the width as needed
+                                .width(100.dp)
                         ) {
-                            Text(text = "Accept", fontSize = 12.sp, color = Color.White)
+                            Text(
+                                text = "Accept",
+                                fontSize = 12.sp,
+                                color = Color(0xFF2F9ECE)
+                            )
                         }
 
-                        Button(
-                            onClick = {
-                                // Handle decline request
-                                handleFriendRequest(request, isAccepted = false)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .width(80.dp) // Adjust the width as needed
-                        ) {
-                            Text(text = "Decline", fontSize = 12.sp, color = Color.White)
-                        }
                     }
                 }
             }
