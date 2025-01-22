@@ -29,13 +29,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,52 +68,23 @@ import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.tasks.await
 
-//class Konnekt: ComponentActivity() {
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        val currentUser = FirebaseAuth.getInstance().currentUser
-//        val currentUsername = currentUser?.displayName ?: "AnonymousUser" // Use displayName for the username
-//        if (currentUser == null) return
-//        setContent {
-//            InstaChatComposeTheme {
-//                Surface(
-//                    modifier = Modifier.fillMaxSize(),
-//                    color = MaterialTheme.colorScheme.background
-//                ) {
-//                    Column(modifier= Modifier.fillMaxSize()) {
-//                        AddFriendsPage(currentUsername = currentUsername)
-//
-//                    }
-//                }
-//            }
-//        }
-//    }
-//}
+
 class Konnekt : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Get the current user UID from Firebase Authentication
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-
-        // Get a reference to the Firebase Realtime Database
         val database = FirebaseDatabase.getInstance().reference
         val userRef = database.child("users").child(currentUserId)
 
-        // Fetch the username from the users node
         userRef.child("username").get().addOnSuccessListener { snapshot ->
-            // Check if the username exists, and fallback to "AnonymousUser" if not
             val currentUsername = snapshot.value as? String ?: "AnonymousUser"
 
-            // Set content after retrieving the username
             setContent {
                 InstaChatComposeTheme {
                     Surface(
@@ -120,7 +92,6 @@ class Konnekt : ComponentActivity() {
                         color = MaterialTheme.colorScheme.background
                     ) {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Pass the fetched username to the AddFriendsPage composable
                             AddFriendsPage(currentUsername = currentUsername)
                         }
                     }
@@ -157,7 +128,6 @@ fun AddFriendsPage(currentUsername: String) {
         val bio: String = activity?.intent?.getStringExtra("bio") ?: "DefaultBio"
         val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
-        // Main Content
         Column(
             modifier = Modifier.padding(horizontal = 15.dp)
         ) {
@@ -177,7 +147,7 @@ fun AddFriendsPage(currentUsername: String) {
                     }
                 }
                 composable("settings") {
-                    SettingsPage(navController) // Replace with your actual settings composable
+                    SettingsPage(navController)
                 }
             }
         }
@@ -198,8 +168,6 @@ fun AddFriendsPage(currentUsername: String) {
     }
 }
 
-
-
 @Composable
 fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Unit) {
     val settingsIcon = painterResource(id = R.drawable.settings)
@@ -210,6 +178,8 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
     var search by remember { mutableStateOf("") }
     var searchPerformed by remember { mutableStateOf(false) }
     var allUsers by remember { mutableStateOf(listOf<Map<String, Any>>()) }
+    var showDuplicateDialog by remember { mutableStateOf(false) } // State for dialog visibility
+
 
 
     fun performSearch(query: String) {
@@ -256,40 +226,52 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
         val currentUserId = currentUser?.uid
 
         if (currentUserId != null) {
-            // Create the friend request map with the correct "from" and "to" user IDs
-            val friendRequest = mapOf(
-                "from" to currentUserId, // Current user sending the request
-                "to" to targetUserId,   // Target user receiving the request
-                "status" to "pending"   // Default status of the request
-            )
+            val sentRequestsRef = database.child("sent_requests").child(currentUserId)
 
-            // Generate a unique key for the new friend request
-            val newRequestKey = database.child("sent_requests").child(currentUserId).push().key
+            // Check for existing requests
+            sentRequestsRef.orderByChild("to").equalTo(targetUserId)
+                .addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val existingRequest = snapshot.children.firstOrNull {
+                            it.child("status").value == "pending"
+                        }
 
-            if (newRequestKey != null) {
-                // Create the updates map for both sent and received requests
-                val updates = mapOf(
-                    "/sent_requests/$currentUserId/$newRequestKey" to friendRequest,
-                    "/received_requests/$targetUserId/$newRequestKey" to friendRequest
-                )
+                        if (existingRequest != null) {
+                            showDuplicateDialog= true
+                        } else {
+                            val friendRequest = mapOf(
+                                "from" to currentUserId,
+                                "to" to targetUserId,
+                                "status" to "pending"
+                            )
 
-                // Update the database atomically
-                database.updateChildren(updates)
-                    .addOnSuccessListener {
-                        Log.d("FriendRequest", "Friend request sent successfully")
-                        Log.d("DB_DEBUG", "Saved Request: $friendRequest")
+                            val newRequestKey = sentRequestsRef.push().key
+
+                            if (newRequestKey != null) {
+                                val updates = mapOf(
+                                    "/sent_requests/$currentUserId/$newRequestKey" to friendRequest,
+                                    "/received_requests/$targetUserId/$newRequestKey" to friendRequest
+                                )
+
+                                database.updateChildren(updates)
+                                    .addOnSuccessListener {
+                                        Log.d("FriendRequest", "Friend request sent successfully")
+                                    }
+                                    .addOnFailureListener { exception ->
+                                        Log.e("FriendRequest", "Error sending friend request", exception)
+                                    }
+                            }
+                        }
                     }
-                    .addOnFailureListener { exception ->
-                        Log.e("FriendRequest", "Error sending friend request", exception)
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendRequest", "Error checking for duplicate requests", error.toException())
                     }
-            } else {
-                Log.e("FriendRequest", "Failed to generate new request key")
-            }
+                })
         } else {
             Log.e("FriendRequest", "User not logged in")
         }
     }
-
     Column {
         Row(
             modifier = Modifier
@@ -481,6 +463,27 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             }
         }
     }
+    if (showDuplicateDialog) {
+        ShowDuplicateRequestDialog(onDismiss = { showDuplicateDialog = false })
+    }
+}
+
+@Composable
+fun ShowDuplicateRequestDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("OK")
+            }
+        },
+        title = {
+            Text("Duplicate Request")
+        },
+        text = {
+            Text("A pending friend request already exists.")
+        }
+    )
 }
 
 data class FriendRequest(
