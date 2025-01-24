@@ -26,15 +26,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DismissDirection
+import androidx.compose.material3.DismissValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismiss
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,11 +75,13 @@ import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.firestore
 
 
 class Konnekt : ComponentActivity() {
@@ -540,15 +550,12 @@ fun loadReceivedRequestsWithDetails(
 fun UserReceivesRequest(currentUsername: String) {
     val friendRequests = remember { mutableStateListOf<Pair<FriendRequest, Map<String, String>>>() }
 
-    // Load the received requests for the current user
     LaunchedEffect(currentUsername) {
         loadReceivedRequestsWithDetails(currentUsername) { requests ->
             friendRequests.clear()
             friendRequests.addAll(requests)
         }
     }
-
-    // UI to display the requests
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -633,16 +640,41 @@ fun UserReceivesRequest(currentUsername: String) {
     }
 }
 
-// Function to handle friend requests
 private fun handleFriendRequest(request: FriendRequest, isAccepted: Boolean) {
-    // Implement your logic to accept or decline the request
+    val db = Firebase.firestore
+
     if (isAccepted) {
-        println("Accepted request from ${request.from}")
+        // Delete request and add as friend (in two separate steps)
+        db.collection("received_requests").document(request.from)
+            .delete()
+            .addOnSuccessListener {
+                // Add to friends
+                db.collection("friends").add(
+                    mapOf(
+                        "userId" to request.to,
+                        "friendId" to request.from,
+                        "timestamp" to System.currentTimeMillis()
+                    )
+                ).addOnSuccessListener {
+                    println("Friend request accepted and added to friends.")
+                }.addOnFailureListener { e ->
+                    println("Failed to add friend: ${e.message}")
+                }
+            }
+            .addOnFailureListener { e ->
+                println("Failed to delete friend request: ${e.message}")
+            }
     } else {
-        println("Declined request from ${request.from}")
+        // Decline request
+        db.collection("received_requests").document(request.from)
+            .delete()
+            .addOnSuccessListener {
+                println("Friend request declined.")
+            }.addOnFailureListener { e ->
+                println("Failed to decline friend request: ${e.message}")
+            }
     }
 }
-
 enum class BottomAppBarItem {
     Messages,
     Calls,
@@ -659,7 +691,7 @@ fun BottomAppBarKonnekt(username: String,profilePic: Uri) {
             .background(Color.White)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically 
+        verticalAlignment = Alignment.CenterVertically
     ) {
         BottomAppBarItemKonnekt(
             label = "Messages",
@@ -711,8 +743,8 @@ fun BottomAppBarItemKonnekt(
         modifier = Modifier
             .width(68.dp)
             .height(52.dp)
-            .clickable(onClick = onClick),  
-        horizontalAlignment = Alignment.CenterHorizontally 
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Image(
             painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
