@@ -83,7 +83,6 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.firestore
 
-
 class Konnekt : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,36 +91,29 @@ class Konnekt : ComponentActivity() {
         val database = FirebaseDatabase.getInstance().reference
         val userRef = database.child("users").child(currentUserId)
 
+        // Fetch the username and display UI directly
         userRef.child("username").get().addOnSuccessListener { snapshot ->
             val currentUsername = snapshot.value as? String ?: "AnonymousUser"
-
-            setContent {
-                InstaChatComposeTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            AddFriendsPage(currentUsername = currentUsername)
-                        }
-                    }
-                }
-            }
+            loadUserUI(currentUsername)
         }.addOnFailureListener { exception ->
             // Log failure to retrieve username
             Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
 
-            // Fallback to default username if fetching fails
-            val currentUsername = "AnonymousUser"
-            setContent {
-                InstaChatComposeTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            AddFriendsPage(currentUsername = currentUsername)
-                        }
+            // Show a fallback username and load the UI
+            loadUserUI("AnonymousUser")
+        }
+    }
+
+    // Function to set the content view based on the username
+    private fun loadUserUI(currentUsername: String) {
+        setContent {
+            InstaChatComposeTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        AddFriendsPage(currentUsername = currentUsername)
                     }
                 }
             }
@@ -153,7 +145,7 @@ fun AddFriendsPage(currentUsername: String) {
                             onSettingsClick = { navController.navigate("settings") }
                         )
 //                        ReceivedRequestsScreen()
-                        UserReceivesRequest(currentUsername)
+                        UserReceivesRequest()
                     }
                 }
                 composable("settings") {
@@ -188,9 +180,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
     var search by remember { mutableStateOf("") }
     var searchPerformed by remember { mutableStateOf(false) }
     var allUsers by remember { mutableStateOf(listOf<Map<String, Any>>()) }
-    var showDuplicateDialog by remember { mutableStateOf(false) } // State for dialog visibility
-
-
+    var showDuplicateDialog by remember { mutableStateOf(false) }
 
     fun performSearch(query: String) {
         if (query.isNotEmpty()) {
@@ -204,13 +194,16 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             searchPerformed = false
         }
     }
+
     fun loadAllUsers() {
         database.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 val users = dataSnapshot.children.mapNotNull { snapshot ->
+                    val uid = snapshot.key ?: return@mapNotNull null
                     val userMap = snapshot.value as? Map<String, Any>
                     userMap?.let {
                         mapOf(
+                            "uid" to uid,
                             "username" to (it["username"] as? String ?: ""),
                             "email" to (it["email"] as? String ?: ""),
                             "profileImageUri" to (it["profileImageUri"] as? String ?: "")
@@ -231,14 +224,14 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
     loadAllUsers()
 
     fun sendFriendRequest(targetUserId: String) {
-        val database = FirebaseDatabase.getInstance().reference
         val currentUser = FirebaseAuth.getInstance().currentUser
         val currentUserId = currentUser?.uid
 
         if (currentUserId != null) {
-            val sentRequestsRef = database.child("sent_requests").child(currentUserId)
+            val sentRequestsRef = database.child("users").child(currentUserId).child("sent_requests")
+            val receivedRequestsRef = database.child("users").child(targetUserId).child("received_requests")
 
-            // Check for existing requests
+            // Check for existing friend requests
             sentRequestsRef.orderByChild("to").equalTo(targetUserId)
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
@@ -247,7 +240,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                         }
 
                         if (existingRequest != null) {
-                            showDuplicateDialog= true
+                            showDuplicateDialog = true
                         } else {
                             val friendRequest = mapOf(
                                 "from" to currentUserId,
@@ -259,8 +252,8 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
 
                             if (newRequestKey != null) {
                                 val updates = mapOf(
-                                    "/sent_requests/$currentUserId/$newRequestKey" to friendRequest,
-                                    "/received_requests/$targetUserId/$newRequestKey" to friendRequest
+                                    "/users/$currentUserId/sent_requests/$newRequestKey" to friendRequest,
+                                    "/users/$targetUserId/received_requests/$newRequestKey" to friendRequest
                                 )
 
                                 database.updateChildren(updates)
@@ -282,6 +275,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             Log.e("FriendRequest", "User not logged in")
         }
     }
+
     Column {
         Row(
             modifier = Modifier
@@ -313,9 +307,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                 )
             }
 
-            Row (
-               modifier= Modifier.clickable { onSettingsClick() }
-            ){
+            Row(modifier = Modifier.clickable { onSettingsClick() }) {
                 Image(
                     painter = settingsIcon,
                     contentDescription = null,
@@ -354,9 +346,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                 .height(48.dp)
                 .width(444.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painter = searchIcon,
                     contentDescription = "Search",
@@ -390,7 +380,6 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
 
         Spacer(modifier = Modifier.height(10.dp))
 
-
         LazyColumn {
             if (!searchPerformed) {
                 // Show nothing before search is performed
@@ -410,6 +399,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                     val username = result["username"] as? String ?: ""
                     val email = result["email"] as? String ?: ""
                     val profileImageUri = result["profileImageUri"] as? String ?: ""
+                    val targetUserId = result["uid"] as? String ?: ""
 
                     Row(
                         modifier = Modifier
@@ -418,8 +408,6 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(Modifier.width(160.dp)) {
-
-
                             val painter = rememberAsyncImagePainter(model = profileImageUri)
                             Image(
                                 painter = painter,
@@ -437,42 +425,20 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                                 Text(text = email, color = Color.Gray)
                             }
                         }
-                        val addFriend= painterResource(id = R.drawable.addfriends)
+                        val addFriend = painterResource(id = R.drawable.addfriends)
                         Row(
                             modifier = Modifier
-                                .width(110.dp)
-                                .border(
-                                    width = 1.dp,
-                                    color = Color(0xFF2F9ECE),
-                                    shape = RoundedCornerShape(12.dp),
-                                )
-                                .padding(8.dp)
-                                .clickable {
-                                    sendFriendRequest(username)
-                                }
-                        ){
-                            Image(
-                                painter = addFriend,
-                                contentDescription = null,
-                                modifier= Modifier.size(16.dp)
-                                )
-
-                            Text(
-                                text = "Add Account",
-                                style = TextStyle(
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight(400),
-                                    color = Color(0xFF2F9ECE),
-                                ),
-                            )
-
+                                .clickable { sendFriendRequest(targetUserId) }
+                        ) {
+                            Image(painter = addFriend, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("Add Account", color = Color(0xFF2F9ECE))
                         }
-
                     }
                 }
             }
         }
     }
+
     if (showDuplicateDialog) {
         ShowDuplicateRequestDialog(onDismiss = { showDuplicateDialog = false })
     }
@@ -503,13 +469,23 @@ data class FriendRequest(
 )
 
 fun loadReceivedRequestsWithDetails(
-    username: String,
+    userId: String,
     onRequestsLoaded: (List<Pair<FriendRequest, Map<String, String>>>) -> Unit
 ) {
-    val database = FirebaseDatabase.getInstance().getReference("received_requests")
-    val usersDatabase = FirebaseDatabase.getInstance().getReference("users")
+    val database = FirebaseDatabase.getInstance()
+        .getReference("users")
+        .child("users")
+        .child(userId)
+        .child("received_requests")
+    val usersDatabase = FirebaseDatabase.getInstance()
+        .getReference("users")
+        .child("users")
 
-    database.child(username).get().addOnSuccessListener { snapshot ->
+    Log.d("Firebase", "Fetching friend requests for userId: $userId")
+
+    database.get().addOnSuccessListener { snapshot ->
+        Log.d("Firebase", "Snapshot exists: ${snapshot.exists()}")
+
         if (snapshot.exists()) {
             val requests = mutableListOf<Pair<FriendRequest, Map<String, String>>>()
 
@@ -517,6 +493,8 @@ fun loadReceivedRequestsWithDetails(
                 val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
                 val to = requestSnapshot.child("to").getValue(String::class.java) ?: ""
                 val status = requestSnapshot.child("status").getValue(String::class.java) ?: "pending"
+
+                Log.d("Firebase", "Friend request: from=$from, to=$to, status=$status")
 
                 val request = FriendRequest(from, to, status)
                 val detailsTask = usersDatabase.child(from).get().continueWith { userSnapshotTask ->
@@ -534,24 +512,31 @@ fun loadReceivedRequestsWithDetails(
                 detailsTask
             }
 
-            Tasks.whenAllSuccess<Pair<FriendRequest, Map<String, String>>>(fetchDetailsTasks).addOnSuccessListener { detailedRequests ->
-                onRequestsLoaded(detailedRequests)
-            }
+            Tasks.whenAllSuccess<Pair<FriendRequest, Map<String, String>>>(fetchDetailsTasks)
+                .addOnSuccessListener { detailedRequests ->
+                    Log.d("Firebase", "Loaded ${detailedRequests.size} friend requests")
+                    onRequestsLoaded(detailedRequests)
+                }
         } else {
+            Log.d("Firebase", "No received friend requests found for userId: $userId")
             onRequestsLoaded(emptyList())
         }
     }.addOnFailureListener { exception ->
-        Log.e("Firebase", "Failed to load received requests for username: $username", exception)
-        onRequestsLoaded(emptyList())
+        Log.e("Firebase", "Failed to load received requests for userId: $userId", exception)
+        onRequestsLoaded(emptyList()) // Handle error gracefully
     }
 }
 
 @Composable
-fun UserReceivesRequest(currentUsername: String) {
+fun UserReceivesRequest() {
     val friendRequests = remember { mutableStateListOf<Pair<FriendRequest, Map<String, String>>>() }
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    val userId = currentUser?.uid ?: ""
 
-    LaunchedEffect(currentUsername) {
-        loadReceivedRequestsWithDetails(currentUsername) { requests ->
+    LaunchedEffect(userId) {
+        Log.d("UserReceivesRequest", "Fetching friend requests for $userId")
+        loadReceivedRequestsWithDetails(userId) { requests ->
+            Log.d("UserReceivesRequest", "Received ${requests.size} friend requests")
             friendRequests.clear()
             friendRequests.addAll(requests)
         }
