@@ -479,7 +479,6 @@ fun loadReceivedRequestsWithDetails(
         .child("received_requests")
     val usersDatabase = FirebaseDatabase.getInstance()
         .getReference("users")
-        .child("users")
 
     Log.d("Firebase", "Fetching friend requests for userId: $userId")
 
