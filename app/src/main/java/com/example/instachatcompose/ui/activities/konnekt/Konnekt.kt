@@ -640,7 +640,6 @@ fun UserReceivesRequest() {
     }
 }
 
-
 private fun handleFriendRequest(
     request: FriendRequest,
     isAccepted: Boolean,
@@ -648,42 +647,44 @@ private fun handleFriendRequest(
     message: MutableState<String>,
     username: String
 ) {
-    val db = Firebase.database.reference // Firebase Realtime Database reference
+    val db = Firebase.database.reference
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
 
     if (isAccepted) {
-        // Log to debug
         Log.d("FriendRequest", "Accepted: Deleting from received and sent requests")
 
-        // Delete from the receiver's received requests
-        db.child("users").child(userId).child("received_requests").child(request.from)
-            .removeValue()
-            .addOnSuccessListener {
-                // Delete from the sender's sent requests
-                db.child("users").child(userId).child("sent_requests").child(request.to)
-                    .removeValue()
-                    .addOnSuccessListener {
-                        // Add to both friends nodes
+        // Find and delete from received_requests
+        db.child("users").child(userId).child("received_requests")
+            .orderByChild("from").equalTo(request.from)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                snapshot.children.forEach { it.ref.removeValue() }
+
+                // Find and delete from sent_requests
+                db.child("users").child(request.from).child("sent_requests")
+                    .orderByChild("to").equalTo(userId)
+                    .get()
+                    .addOnSuccessListener { sentSnapshot ->
+                        sentSnapshot.children.forEach { it.ref.removeValue() }
+
+                        // Add friends
                         val receiverToSender = mapOf(
                             "friendId" to request.from,
                             "timestamp" to System.currentTimeMillis()
                         )
-                        db.child("users").child(request.to).child("friends").push()
+                        db.child("users").child(userId).child("friends").push()
                             .setValue(receiverToSender)
                             .addOnSuccessListener {
                                 val senderToReceiver = mapOf(
-                                    "friendId" to request.to,
+                                    "friendId" to userId,
                                     "timestamp" to System.currentTimeMillis()
                                 )
                                 db.child("users").child(request.from).child("friends").push()
                                     .setValue(senderToReceiver)
                                     .addOnSuccessListener {
-                                        Log.d("FriendRequest", "Friend request accepted and both users added to each other's friends list.")
+                                        Log.d("FriendRequest", "Friend request accepted and both users added as friends.")
                                         showDialog.value = true
                                         message.value = "You are now friends with $username"
-
-                                        // Manually trigger a UI refresh here
-                                        // For example, if using a List, call notifyDataSetChanged() or update the state
                                     }
                                     .addOnFailureListener { e ->
                                         Log.e("FriendRequest", "Failed to add sender to receiver's friends: ${e.message}")
@@ -701,18 +702,20 @@ private fun handleFriendRequest(
                 Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
             }
     } else {
-        // Decline the request (delete from received requests)
-        db.child("users").child(userId).child("received_requests").child(request.from)
-            .removeValue()
-            .addOnSuccessListener {
+        // Decline request (delete from received_requests)
+        db.child("users").child(userId).child("received_requests")
+            .orderByChild("from").equalTo(request.from)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                snapshot.children.forEach { it.ref.removeValue() }
                 Log.d("FriendRequest", "Friend request declined.")
-                // Optionally refresh the UI here
             }
             .addOnFailureListener { e ->
                 Log.e("FriendRequest", "Failed to decline friend request: ${e.message}")
             }
     }
 }
+
 
 enum class BottomAppBarItem {
     Messages,
