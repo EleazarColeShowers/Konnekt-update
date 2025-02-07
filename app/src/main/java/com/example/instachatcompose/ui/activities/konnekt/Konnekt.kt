@@ -603,24 +603,25 @@ fun UserReceivesRequest() {
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                handleFriendRequest(request, isAccepted = true, showDialog, message, username)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .width(100.dp)
-                        ) {
-                            Text(
-                                text = "Accept",
-                                fontSize = 12.sp,
-                                color = Color(0xFF2F9ECE)
-                            )
-                        }
-
+                    // Accept Button with onClick that removes the request from the UI upon success
+                    Button(
+                        onClick = {
+                            handleFriendRequest(request, isAccepted = true, showDialog, message, username) {
+                                // Remove the accepted request from the state list so it no longer shows in the UI
+                                friendRequests.remove(Pair(request, userDetails))
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .width(100.dp)
+                    ) {
+                        Text(
+                            text = "Accept",
+                            fontSize = 12.sp,
+                            color = Color(0xFF2F9ECE)
+                        )
                     }
                 }
             }
@@ -640,12 +641,14 @@ fun UserReceivesRequest() {
     }
 }
 
+
 private fun handleFriendRequest(
     request: FriendRequest,
     isAccepted: Boolean,
     showDialog: MutableState<Boolean>,
     message: MutableState<String>,
-    username: String
+    username: String,
+    onComplete: () -> Unit = {}
 ) {
     val db = Firebase.database.reference
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
@@ -685,6 +688,7 @@ private fun handleFriendRequest(
                                         Log.d("FriendRequest", "Friend request accepted and both users added as friends.")
                                         showDialog.value = true
                                         message.value = "You are now friends with $username"
+                                        onComplete()
                                     }
                                     .addOnFailureListener { e ->
                                         Log.e("FriendRequest", "Failed to add sender to receiver's friends: ${e.message}")

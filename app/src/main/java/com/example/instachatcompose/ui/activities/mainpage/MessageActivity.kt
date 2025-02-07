@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -31,7 +33,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,11 +54,15 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
 import coil.compose.ImagePainter
 import coil.compose.rememberImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
 
 
 class MessageActivity: ComponentActivity() {
@@ -84,26 +92,36 @@ fun MessagePage() {
         val bio: String = activity?.intent?.getStringExtra("bio") ?: "DefaultBio"
         val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
-        Column(
-            modifier = Modifier.padding(horizontal = 15.dp)
-        ) {
+        val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val userId = currentUser?.uid ?: ""
 
-            User(username = username, profilePic = profilePic)
-            val navController = rememberNavController()
-            NavHost(navController, startDestination = "home" ){
-                composable("home"){ MessageFrag(username = username, navController)}
-                composable("detail") { TextFrag() }
+        // Load friends when the composable starts
+        LaunchedEffect(userId) {
+            loadFriendsWithDetails(userId) { friends ->
+                friendList.clear()
+                friendList.addAll(friends)
             }
-
-
         }
+
+        Column(modifier = Modifier.padding(horizontal = 15.dp)) {
+            User(username = username, profilePic = profilePic)
+            Spacer(modifier = Modifier.height(27.dp))
+            val navController = rememberNavController()
+
+            NavHost(navController, startDestination = if (friendList.isEmpty()) "message" else "friends") {
+                composable("message") { MessageFrag(username = username, navController) }
+                composable("friends") { FriendsListScreen(friendList) }
+            }
+        }
+
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter) // Aligns the Box at the bottom
-                .fillMaxWidth() // The BottomAppBar spans the full width
-                .height(80.dp)  // Desired height
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(80.dp)
         ) {
-            BottomAppBar(username = username, profilePic = profilePic) // Place your bottom bar here
+            BottomAppBar(username = username, profilePic = profilePic)
         }
     }
 }
@@ -282,17 +300,53 @@ fun MessageFrag(username: String, navController: NavController){
             modifier = Modifier.width(300.dp)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = {
-            // Navigate to Detail Screen within the same activity
-            navController.navigate("detail")
-        }) {
-            Text("Go to Detail Screen")
-        }
 
     }
 
 }
+
+@Composable
+fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>) {
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(friendList) { (friend, details) ->
+            val friendUsername = details["username"] ?: "Unknown"
+            val friendProfileUri = details["profileImageUri"] ?: ""
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (friendProfileUri.isNotEmpty()) {
+                    AsyncImage(
+                        model = friendProfileUri,
+                        contentDescription = "Profile Image",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = friendUsername,
+                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 fun TextFrag(){
@@ -388,3 +442,55 @@ fun BottomAppBarItem(
     }
 }
 
+data class Friend(
+    val friendId: String = "",
+    val timestamp: Long = 0L
+)
+
+fun loadFriendsWithDetails(
+    userId: String,
+    onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit
+) {
+    // Reference to the users node
+    val usersRef = FirebaseDatabase.getInstance().getReference("users")
+    // Reference to the current user's friends node
+    val friendsRef = usersRef.child(userId).child("friends")
+
+    friendsRef.get().addOnSuccessListener { snapshot ->
+        if (snapshot.exists()) {
+            val friendPairs = mutableListOf<Pair<Friend, Map<String, String>>>()
+
+            // For each friend entry (with a random key)
+            val detailTasks = snapshot.children.map { friendSnapshot ->
+                // Read the friend details from your structure
+                val friendId = friendSnapshot.child("friendId").getValue(String::class.java) ?: ""
+                val timestamp = friendSnapshot.child("timestamp").getValue(Long::class.java) ?: 0L
+                val friend = Friend(friendId, timestamp)
+
+                // Now, query the user's details for this friend from the "users" node.
+                usersRef.child(friendId).get().continueWith { task ->
+                    val userSnapshot = task.result
+                    val details = if (userSnapshot.exists()) {
+                        mapOf(
+                            "username" to (userSnapshot.child("username").getValue(String::class.java) ?: "Unknown"),
+                            "profileImageUri" to (userSnapshot.child("profileImageUri").getValue(String::class.java) ?: "")
+                        )
+                    } else {
+                        mapOf("username" to "Unknown", "profileImageUri" to "")
+                    }
+                    Pair(friend, details)
+                }
+            }
+
+            Tasks.whenAllSuccess<Pair<Friend, Map<String, String>>>(detailTasks)
+                .addOnSuccessListener { friendDetailsList ->
+                    onFriendsLoaded(friendDetailsList)
+                }
+        } else {
+            onFriendsLoaded(emptyList())
+        }
+    }.addOnFailureListener { exception ->
+        Log.e("Firebase", "Error loading friends: ${exception.message}")
+        onFriendsLoaded(emptyList())
+    }
+}
