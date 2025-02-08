@@ -58,6 +58,7 @@ import coil.compose.AsyncImage
 import coil.compose.ImagePainter
 import coil.compose.rememberImagePainter
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
@@ -131,6 +132,7 @@ fun MessagePage() {
 fun User(username: String,profilePic: Uri){
     val settingsIcon= painterResource(id = R.drawable.settings)
     val searchIcon= painterResource(id = R.drawable.searchicon)
+    val context = LocalContext.current as ComponentActivity
 
     var search by remember {
         mutableStateOf("")
@@ -167,7 +169,10 @@ fun User(username: String,profilePic: Uri){
             )
         }
 
-        Row{
+        Row(modifier = Modifier.clickable {
+            val intent= Intent(context, Settings::class.java)
+            context.startActivity(intent)
+        }) {
             Image(
                 painter = settingsIcon,
                 contentDescription = null,

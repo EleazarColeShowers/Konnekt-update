@@ -72,6 +72,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
@@ -176,6 +177,7 @@ fun AddFriendsPage(currentUsername: String) {
 fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Unit) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
+    val context = LocalContext.current as ComponentActivity
 
     var searchResults by remember { mutableStateOf(listOf<Map<String, Any>>()) }
     val database = FirebaseDatabase.getInstance().getReference("users")
@@ -309,7 +311,10 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                 )
             }
 
-            Row(modifier = Modifier.clickable { onSettingsClick() }) {
+            Row(modifier = Modifier.clickable {
+                val intent= Intent(context, Settings::class.java)
+                context.startActivity(intent)
+            }) {
                 Image(
                     painter = settingsIcon,
                     contentDescription = null,
