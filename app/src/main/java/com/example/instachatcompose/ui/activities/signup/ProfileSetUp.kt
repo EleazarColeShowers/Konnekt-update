@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -122,20 +123,16 @@ fun ProfileSetUpProgress(onBackPressed: () -> Unit){
                 }
         )
         Spacer(modifier = Modifier.width(30.dp))
-        Image(
-            painter = goodProgress,
-            contentDescription = null,
+        LinearProgressIndicator(
+            progress = {
+                1f // 100% completed
+            },
             modifier = Modifier
+                .weight(1f)
                 .height(13.dp)
-                .width(150.dp)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Image(
-            painter = goodProgress,
-            contentDescription = null,
-            modifier = Modifier
-                .height(13.dp)
-                .width(150.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            color = Color(0xFF2F9ECE),
+            trackColor = Color.LightGray,
         )
     }
 }

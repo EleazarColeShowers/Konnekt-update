@@ -28,18 +28,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -88,12 +91,13 @@ class SignUpActivity: ComponentActivity() {
 @Composable
 fun SignUpPage(onBackPressed: () -> Unit){
     var username by rememberSaveable { mutableStateOf("") }
+    var progress by remember { mutableFloatStateOf(0.5f) }
 //    var bio: String = ""
 //    var selectedImageUri: Uri? = null
     Column (
         modifier= Modifier.padding(horizontal = 15.dp)
             ){
-        SignUpProgress(onBackPressed ={
+        SignUpProgress(progress= progress,onBackPressed ={
              onBackPressed()
         } )
         Form(username = username){
@@ -104,41 +108,39 @@ fun SignUpPage(onBackPressed: () -> Unit){
 }
 
 @Composable
-fun SignUpProgress(onBackPressed: () -> Unit){
-    val returnArrow= painterResource(id = R.drawable.returnarrow)
-    val goodProgress= painterResource(id = R.drawable.bluerectangle)
-    val noProgress= painterResource(id = R.drawable.whiterectangle)
-    Spacer(modifier = Modifier.height(15.dp))
-    Row(modifier= Modifier
-        .fillMaxWidth()
-       ) {
+fun SignUpProgress(progress: Float, onBackPressed: () -> Unit) {
+    val returnArrow = painterResource(id = R.drawable.returnarrow)
 
-        Image(painter =returnArrow ,
+    Spacer(modifier = Modifier.height(15.dp))
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = returnArrow,
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
-                .clickable {
-                    onBackPressed()
-                }
+                .clickable { onBackPressed() }
         )
-        Spacer(modifier = Modifier.width(30.dp))
-        Image(
-            painter = goodProgress,
-            contentDescription = null,
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        LinearProgressIndicator(
+            progress = { progress },
             modifier = Modifier
+                .weight(1f)
                 .height(13.dp)
-                .width(150.dp)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Image(
-            painter = noProgress,
-            contentDescription = null,
-            modifier = Modifier
-                .height(13.dp)
-                .width(150.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            color = Color(0xFF2F9ECE),
+            trackColor = Color.LightGray,
         )
     }
 }
+
 
 @Composable
 fun Form(username: String, onUsernameChanged: (String) -> Unit){
