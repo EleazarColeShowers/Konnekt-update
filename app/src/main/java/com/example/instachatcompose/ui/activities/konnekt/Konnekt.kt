@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -39,6 +40,7 @@ import androidx.compose.material3.DismissDirection
 import androidx.compose.material3.DismissValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -433,12 +435,18 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                             }
                         }
                         val addFriend = painterResource(id = R.drawable.addfriends)
-                        Row(
+                        Button(
                             modifier = Modifier
-                                .clickable { sendFriendRequest(targetUserId) }
+                                .height(36.dp)
+                                .width(100.dp),
+                            onClick= {
+                                sendFriendRequest(targetUserId)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
                         ) {
                             Image(painter = addFriend, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Text("Add Account", color = Color(0xFF2F9ECE))
+                            Text("Add ", color = Color(0xFF2F9ECE))
                         }
                     }
                 }
@@ -609,24 +617,45 @@ fun UserReceivesRequest() {
                     }
 
                     // Accept Button with onClick that removes the request from the UI upon success
-                    Button(
-                        onClick = {
-                            handleFriendRequest(request, isAccepted = true, showDialog, message, username) {
-                                // Remove the accepted request from the state list so it no longer shows in the UI
-                                friendRequests.remove(Pair(request, userDetails))
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
-                        modifier = Modifier
-                            .height(36.dp)
-                            .width(100.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Text(
-                            text = "Accept",
-                            fontSize = 12.sp,
-                            color = Color(0xFF2F9ECE)
-                        )
+                        Button(
+                            onClick = {
+                                handleFriendRequest(request, isAccepted = true, showDialog, message, username) {
+                                    friendRequests.remove(Pair(request, userDetails))
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .width(70.dp)
+                        ) {
+                            Text(
+                                text = "Accept",
+                                fontSize = 10.sp,
+                                color = Color(0xFF2F9ECE)
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                handleFriendRequest(request, isAccepted = false, showDialog, message, username) {
+                                    friendRequests.remove(Pair(request, userDetails))
+                                }
+                            },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Decline",
+                                tint = Color.Red
+                            )
+                        }
+
+
                     }
                 }
             }
@@ -711,16 +740,30 @@ private fun handleFriendRequest(
                 Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
             }
     } else {
-        // Decline request (delete from received_requests)
+        Log.d("FriendRequest", "Declined: Removing request from both received and sent requests")
+
+        // Delete from received_requests
         db.child("users").child(userId).child("received_requests")
             .orderByChild("from").equalTo(request.from)
             .get()
             .addOnSuccessListener { snapshot ->
                 snapshot.children.forEach { it.ref.removeValue() }
-                Log.d("FriendRequest", "Friend request declined.")
+
+                // Delete from sent_requests
+                db.child("users").child(request.from).child("sent_requests")
+                    .orderByChild("to").equalTo(userId)
+                    .get()
+                    .addOnSuccessListener { sentSnapshot ->
+                        sentSnapshot.children.forEach { it.ref.removeValue() }
+                        Log.d("FriendRequest", "Friend request declined and removed from both users.")
+                        onComplete()
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("FriendRequest", "Failed to delete from sender's sent requests: ${e.message}")
+                    }
             }
             .addOnFailureListener { e ->
-                Log.e("FriendRequest", "Failed to decline friend request: ${e.message}")
+                Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
             }
     }
 }
