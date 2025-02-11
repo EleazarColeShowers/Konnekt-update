@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,12 +27,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.BottomAppBar
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,9 +55,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import coil.compose.AsyncImage
 import coil.compose.ImagePainter
 import coil.compose.rememberImagePainter
@@ -62,8 +68,14 @@ import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.database
+import java.net.URLEncoder
 
 
 class MessageActivity: ComponentActivity() {
@@ -112,7 +124,35 @@ fun MessagePage() {
 
             NavHost(navController, startDestination = if (friendList.isEmpty()) "message" else "friends") {
                 composable("message") { MessageFrag(username = username, navController) }
-                composable("friends") { FriendsListScreen(friendList) }
+                composable("friends") {
+                    FriendsListScreen(
+                        friendList = friendList,
+                        navController = navController,
+                        chatId = "defaultChatId",
+                        currentUserId = userId,
+                        receiverUserId = "defaultReceiverId"
+                    )
+                }
+
+                composable(
+                    "chat/{username}/{profileImageUri}/{chatId}/{currentUserId}/{receiverUserId}",
+                    arguments = listOf(
+                        navArgument("username") { type = NavType.StringType },
+                        navArgument("profileImageUri") { type = NavType.StringType },
+                        navArgument("chatId") { type = NavType.StringType },
+                        navArgument("currentUserId") { type = NavType.StringType },
+                        navArgument("receiverUserId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val username = backStackEntry.arguments?.getString("username") ?: "Unknown"
+                    val profileImageUri = Uri.decode(backStackEntry.arguments?.getString("profileImageUri") ?: "")
+                    val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
+                    val currentUserId = backStackEntry.arguments?.getString("currentUserId") ?: ""
+                    val receiverUserId = backStackEntry.arguments?.getString("receiverUserId") ?: ""
+
+                    ChatScreen(username, profileImageUri, navController, chatId, currentUserId, receiverUserId)
+                }
+
             }
         }
 
@@ -311,7 +351,12 @@ fun MessageFrag(username: String, navController: NavController){
 }
 
 @Composable
-fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>) {
+fun FriendsListScreen(
+    friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController,
+    chatId: String,
+    currentUserId: String,
+    receiverUserId: String,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -323,7 +368,11 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(8.dp)
+                    .clickable {
+                        val encodedProfileUri = URLEncoder.encode(friendProfileUri, "UTF-8")
+                        navController.navigate("chat/${friendUsername}/${encodedProfileUri}/${chatId}/${currentUserId}/${receiverUserId}")
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (friendProfileUri.isNotEmpty()) {
@@ -456,23 +505,18 @@ fun loadFriendsWithDetails(
     userId: String,
     onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit
 ) {
-    // Reference to the users node
     val usersRef = FirebaseDatabase.getInstance().getReference("users")
-    // Reference to the current user's friends node
     val friendsRef = usersRef.child(userId).child("friends")
 
     friendsRef.get().addOnSuccessListener { snapshot ->
         if (snapshot.exists()) {
             val friendPairs = mutableListOf<Pair<Friend, Map<String, String>>>()
 
-            // For each friend entry (with a random key)
             val detailTasks = snapshot.children.map { friendSnapshot ->
-                // Read the friend details from your structure
                 val friendId = friendSnapshot.child("friendId").getValue(String::class.java) ?: ""
                 val timestamp = friendSnapshot.child("timestamp").getValue(Long::class.java) ?: 0L
                 val friend = Friend(friendId, timestamp)
 
-                // Now, query the user's details for this friend from the "users" node.
                 usersRef.child(friendId).get().continueWith { task ->
                     val userSnapshot = task.result
                     val details = if (userSnapshot.exists()) {
@@ -499,3 +543,140 @@ fun loadFriendsWithDetails(
         onFriendsLoaded(emptyList())
     }
 }
+
+
+data class Message(
+    val senderId: String = "",
+    val receiverId: String = "",
+    val text: String = "",
+    val timestamp: Long = 0L,
+    val seen: Boolean = false
+)
+
+
+@Composable
+fun ChatScreen(
+    username: String,
+    profileImageUri: String,
+    navController: NavController,
+    chatId: String,
+    currentUserId: String,
+    receiverUserId: String,
+    ) {
+    val db = Firebase.database.reference
+    val messagesRef = db.child("chats").child(chatId).child("messages")
+
+    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var messageText by remember { mutableStateOf("") }
+
+
+    LaunchedEffect(chatId) {
+        messagesRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                    .sortedByDescending { it.timestamp }  // Order by latest messages
+                messages = messageList
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
+            }
+        })
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top bar with friend's username and profile image
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (profileImageUri.isNotEmpty()) {
+                AsyncImage(
+                    model = profileImageUri,
+                    contentDescription = "Profile Image",
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.Gray)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = username,
+                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            )
+        }
+
+        // Messages List
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            reverseLayout = true,
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            items(messages) { message ->
+
+                MessageBubble(message, currentUserId)
+            }
+        }
+
+        // Message Input
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = messageText,
+                onValueChange = { messageText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Type a message...") }
+            )
+            IconButton(onClick = {
+                if (messageText.isNotBlank()) {
+                    val newMessage = Message(
+                        senderId = currentUserId,
+                        receiverId = receiverUserId, // Correct user ID
+                        text = messageText,
+                        timestamp = System.currentTimeMillis(),
+                        seen = false
+                    )
+                    messagesRef.push().setValue(newMessage) // ✅ Save message to Firebase
+                    messageText = ""  // ✅ Clear input field
+                }
+            }) {
+                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+            }
+        }
+    }
+}
+
+
+@Composable
+fun MessageBubble(message: Message, currentUserId: String) {
+    val isSentByUser = message.senderId == currentUserId // Replace with actual user ID check
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = if (isSentByUser) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Text(
+            text = message.text,
+            modifier = Modifier
+                .background(
+                    if (isSentByUser) Color.Blue else Color.Gray,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(8.dp),
+            color = Color.White
+        )
+    }
+}
+

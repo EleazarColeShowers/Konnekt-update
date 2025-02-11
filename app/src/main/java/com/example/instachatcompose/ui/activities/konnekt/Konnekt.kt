@@ -654,8 +654,6 @@ fun UserReceivesRequest() {
                                 tint = Color.Red
                             )
                         }
-
-
                     }
                 }
             }
