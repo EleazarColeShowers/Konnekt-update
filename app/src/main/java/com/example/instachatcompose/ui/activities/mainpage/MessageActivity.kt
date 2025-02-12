@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -33,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -58,6 +60,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
@@ -99,30 +102,46 @@ class MessageActivity: ComponentActivity() {
 
 @Composable
 fun MessagePage() {
-    Box(modifier = Modifier.fillMaxSize()) {
-        val activity = LocalContext.current as? ComponentActivity
-        val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
-        val bio: String = activity?.intent?.getStringExtra("bio") ?: "DefaultBio"
-        val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
+    val activity = LocalContext.current as? ComponentActivity
+    val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
+    val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
-        val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
-        val currentUser = FirebaseAuth.getInstance().currentUser
-        val userId = currentUser?.uid ?: ""
+    val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    val userId = currentUser?.uid ?: ""
 
-        // Load friends when the composable starts
-        LaunchedEffect(userId) {
-            loadFriendsWithDetails(userId) { friends ->
-                friendList.clear()
-                friendList.addAll(friends)
+    // Load friends when the composable starts
+    LaunchedEffect(userId) {
+        loadFriendsWithDetails(userId) { friends ->
+            friendList.clear()
+            friendList.addAll(friends)
+        }
+    }
+
+    val navController = rememberNavController()
+
+    Scaffold(
+        topBar = {
+            val currentBackStackEntry = navController.currentBackStackEntryAsState().value
+            val currentRoute = currentBackStackEntry?.destination?.route
+            if (currentRoute != null && !currentRoute.startsWith("chat")) {
+                User(username = username, profilePic = profilePic)
+            }
+        },
+        bottomBar = {
+            val currentBackStackEntry = navController.currentBackStackEntryAsState().value
+            val currentRoute = currentBackStackEntry?.destination?.route
+            if (currentRoute != null && !currentRoute.startsWith("chat")) {
+                BottomAppBar(username = username, profilePic = profilePic)
             }
         }
-
-        Column(modifier = Modifier.padding(horizontal = 15.dp)) {
-            User(username = username, profilePic = profilePic)
-            Spacer(modifier = Modifier.height(27.dp))
-            val navController = rememberNavController()
-
-            NavHost(navController, startDestination = if (friendList.isEmpty()) "message" else "friends") {
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            NavHost(
+                navController = navController,
+                startDestination = if (friendList.isEmpty()) "message" else "friends",
+                modifier = Modifier.fillMaxSize()
+            ) {
                 composable("message") { MessageFrag(username = username, navController) }
                 composable("friends") {
                     FriendsListScreen(
@@ -152,19 +171,10 @@ fun MessagePage() {
 
                     ChatScreen(username, profileImageUri, navController, chatId, currentUserId, receiverUserId)
                 }
-
             }
         }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(80.dp)
-        ) {
-            BottomAppBar(username = username, profilePic = profilePic)
-        }
     }
+
 }
 
 
@@ -661,22 +671,33 @@ fun ChatScreen(
 
 
 @Composable
-fun MessageBubble(message: Message, currentUserId: String) {
-    val isSentByUser = message.senderId == currentUserId // Replace with actual user ID check
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = if (isSentByUser) Alignment.CenterEnd else Alignment.CenterStart
+fun MessageBubble(
+    message: Message,
+    currentUserId: String,
+) {
+    val isSentByUser = message.senderId == currentUserId
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top =  2.dp), // Spacing between messages
+        horizontalAlignment = if (isSentByUser) Alignment.End else Alignment.Start
     ) {
-        Text(
-            text = message.text,
+        Box(
             modifier = Modifier
                 .background(
-                    if (isSentByUser) Color.Blue else Color.Gray,
-                    shape = RoundedCornerShape(8.dp)
+                    color = if (isSentByUser) Color(0xFF2F9ECE) else Color(0xFFEEEEEE),
+                    shape = RoundedCornerShape(16.dp) // Curved bubble effect
                 )
-                .padding(8.dp),
-            color = Color.White
-        )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .wrapContentWidth()
+        ) {
+            Text(
+                text = message.text,
+                color = if (isSentByUser) Color.White else Color.Black,
+                style = TextStyle(fontSize = 16.sp)
+            )
+        }
     }
 }
 
