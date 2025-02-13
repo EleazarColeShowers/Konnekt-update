@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -147,9 +149,8 @@ fun MessagePage() {
                     FriendsListScreen(
                         friendList = friendList,
                         navController = navController,
-                        chatId = "defaultChatId",
                         currentUserId = userId,
-                        receiverUserId = "defaultReceiverId"
+//                        receiverUserId = "defaultReceiverId"
                     )
                 }
 
@@ -360,13 +361,19 @@ fun MessageFrag(username: String, navController: NavController){
 
 }
 
+data class Friend(
+    val friendId: String = "",
+    val timestamp: Long = 0L
+)
+
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController,
-    chatId: String,
+//    chatId: String,
     currentUserId: String,
-    receiverUserId: String,
+
 ) {
+    val friend by remember { mutableStateOf<List<Friend>>(emptyList()) }
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -375,14 +382,19 @@ fun FriendsListScreen(
             val friendUsername = details["username"] ?: "Unknown"
             val friendProfileUri = details["profileImageUri"] ?: ""
 
+            val chatId = if (currentUserId < friend.friendId) {
+                "${currentUserId}_${friend.friendId}"
+            } else {
+                "${friend.friendId}_${currentUserId}"
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
                     .clickable {
                         val encodedProfileUri = URLEncoder.encode(friendProfileUri, "UTF-8")
-                        navController.navigate("chat/${friendUsername}/${encodedProfileUri}/${chatId}/${currentUserId}/${receiverUserId}")
-                    },
+                        val receiverUserId = friend.friendId
+                        navController.navigate("chat/${friendUsername}/${encodedProfileUri}/${chatId}/${currentUserId}/${receiverUserId}")                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (friendProfileUri.isNotEmpty()) {
@@ -505,11 +517,6 @@ fun BottomAppBarItem(
         )
     }
 }
-
-data class Friend(
-    val friendId: String = "",
-    val timestamp: Long = 0L
-)
 
 fun loadFriendsWithDetails(
     userId: String,
@@ -676,11 +683,13 @@ fun MessageBubble(
     currentUserId: String,
 ) {
     val isSentByUser = message.senderId == currentUserId
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val maxWidth = screenWidth * 0.7f
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top =  2.dp), // Spacing between messages
+            .padding(top = 2.dp),
         horizontalAlignment = if (isSentByUser) Alignment.End else Alignment.Start
     ) {
         Box(
@@ -690,7 +699,7 @@ fun MessageBubble(
                     shape = RoundedCornerShape(16.dp) // Curved bubble effect
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
-                .wrapContentWidth()
+                .widthIn(max = maxWidth)
         ) {
             Text(
                 text = message.text,
@@ -700,4 +709,3 @@ fun MessageBubble(
         }
     }
 }
-
