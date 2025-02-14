@@ -58,6 +58,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.bundleOf
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -149,33 +150,24 @@ fun MessagePage() {
                     FriendsListScreen(
                         friendList = friendList,
                         navController = navController,
-                        currentUserId = userId,
-//                        receiverUserId = "defaultReceiverId"
+                        currentUserId = userId
                     )
                 }
 
-                composable(
-                    "chat/{username}/{profileImageUri}/{chatId}/{currentUserId}/{receiverUserId}",
-                    arguments = listOf(
-                        navArgument("username") { type = NavType.StringType },
-                        navArgument("profileImageUri") { type = NavType.StringType },
-                        navArgument("chatId") { type = NavType.StringType },
-                        navArgument("currentUserId") { type = NavType.StringType },
-                        navArgument("receiverUserId") { type = NavType.StringType }
-                    )
-                ) { backStackEntry ->
-                    val username = backStackEntry.arguments?.getString("username") ?: "Unknown"
-                    val profileImageUri = Uri.decode(backStackEntry.arguments?.getString("profileImageUri") ?: "")
-                    val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
-                    val currentUserId = backStackEntry.arguments?.getString("currentUserId") ?: ""
-                    val receiverUserId = backStackEntry.arguments?.getString("receiverUserId") ?: ""
+                composable("chat") {
+//                    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+//
+//                    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
+//                    val profileImageUri = Uri.decode(savedStateHandle?.get<String>("profileImageUri") ?: "")
+//                    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
+//                    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
+//                    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
 
-                    ChatScreen(username, profileImageUri, navController, chatId, currentUserId, receiverUserId)
+                    ChatScreen(navController)
                 }
             }
         }
     }
-
 }
 
 
@@ -368,12 +360,10 @@ data class Friend(
 
 @Composable
 fun FriendsListScreen(
-    friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController,
-//    chatId: String,
-    currentUserId: String,
-
+    friendList: List<Pair<Friend, Map<String, String>>>,
+    navController: NavController,
+    currentUserId: String
 ) {
-    val friend by remember { mutableStateOf<List<Friend>>(emptyList()) }
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -387,14 +377,30 @@ fun FriendsListScreen(
             } else {
                 "${friend.friendId}_${currentUserId}"
             }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp)
                     .clickable {
-                        val encodedProfileUri = URLEncoder.encode(friendProfileUri, "UTF-8")
-                        val receiverUserId = friend.friendId
-                        navController.navigate("chat/${friendUsername}/${encodedProfileUri}/${chatId}/${currentUserId}/${receiverUserId}")                    },
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("friendId", friend.friendId)
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("username", friendUsername)
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("profileImageUri", friendProfileUri)
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("chatId", chatId)
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("currentUserId", currentUserId)
+
+                        navController.navigate("chat")
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (friendProfileUri.isNotEmpty()) {
@@ -422,7 +428,6 @@ fun FriendsListScreen(
         }
     }
 }
-
 
 @Composable
 fun TextFrag(){
@@ -499,8 +504,8 @@ fun BottomAppBarItem(
         modifier = Modifier
             .width(68.dp)
             .height(52.dp)
-            .clickable(onClick = onClick),  // Make the item clickable
-        horizontalAlignment = Alignment.CenterHorizontally // Align content in the center
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Image(
             painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
@@ -572,20 +577,20 @@ data class Message(
 
 
 @Composable
-fun ChatScreen(
-    username: String,
-    profileImageUri: String,
-    navController: NavController,
-    chatId: String,
-    currentUserId: String,
-    receiverUserId: String,
-    ) {
+fun ChatScreen(navController: NavController) {
+    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+
+    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
+    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
+    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
+    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
+
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
 
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var messageText by remember { mutableStateOf("") }
-
 
     LaunchedEffect(chatId) {
         messagesRef.addValueEventListener(object : ValueEventListener {
@@ -600,18 +605,19 @@ fun ChatScreen(
             }
         })
     }
+    Log.d("ChatScreen", "Profile Image URI: $profileImageUri")
+
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar with friend's username and profile image
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (profileImageUri.isNotEmpty()) {
+            if (profileImageUri != Uri.EMPTY) {
                 AsyncImage(
-                    model = profileImageUri,
+                    model = profileImageUri.toString(),
                     contentDescription = "Profile Image",
                     modifier = Modifier
                         .size(48.dp)
@@ -632,19 +638,15 @@ fun ChatScreen(
             )
         }
 
-        // Messages List
         LazyColumn(
             modifier = Modifier.weight(1f),
             reverseLayout = true,
             contentPadding = PaddingValues(8.dp)
         ) {
             items(messages) { message ->
-
                 MessageBubble(message, currentUserId)
             }
         }
-
-        // Message Input
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -661,13 +663,13 @@ fun ChatScreen(
                 if (messageText.isNotBlank()) {
                     val newMessage = Message(
                         senderId = currentUserId,
-                        receiverId = receiverUserId, // Correct user ID
+                        receiverId = receiverUserId,
                         text = messageText,
                         timestamp = System.currentTimeMillis(),
                         seen = false
                     )
                     messagesRef.push().setValue(newMessage) // ✅ Save message to Firebase
-                    messageText = ""  // ✅ Clear input field
+                    messageText = ""  // Clear input field
                 }
             }) {
                 Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
@@ -696,7 +698,7 @@ fun MessageBubble(
             modifier = Modifier
                 .background(
                     color = if (isSentByUser) Color(0xFF2F9ECE) else Color(0xFFEEEEEE),
-                    shape = RoundedCornerShape(16.dp) // Curved bubble effect
+                    shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
                 .widthIn(max = maxWidth)
