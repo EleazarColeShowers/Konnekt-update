@@ -194,7 +194,7 @@ fun User(username: String,profilePic: Uri){
                 painter = imagePainter,
                 contentDescription = null,
                 modifier = Modifier
-                    .size(31.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.background)
                     .scale(1.5f)
@@ -408,8 +408,9 @@ fun FriendsListScreen(
                         model = friendProfileUri,
                         contentDescription = "Profile Image",
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.background)
                     )
                 } else {
                     Box(
@@ -620,8 +621,9 @@ fun ChatScreen(navController: NavController) {
                     model = profileImageUri.toString(),
                     contentDescription = "Profile Image",
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.background)
                 )
             } else {
                 Box(
