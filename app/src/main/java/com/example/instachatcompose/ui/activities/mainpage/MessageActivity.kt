@@ -72,6 +72,7 @@ import coil.compose.rememberImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
+import com.example.instachatcompose.ui.activities.konnekt.loadReceivedRequestsWithDetails
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
@@ -81,7 +82,11 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
+import com.google.firebase.firestore.auth.User
 import java.net.URLEncoder
+import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 
 class MessageActivity: ComponentActivity() {
@@ -128,7 +133,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                User(username = username, profilePic = profilePic)
+                User(username = username, profilePic = profilePic, userId)
             }
         },
         bottomBar = {
@@ -155,13 +160,6 @@ fun MessagePage() {
                 }
 
                 composable("chat") {
-//                    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-//
-//                    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
-//                    val profileImageUri = Uri.decode(savedStateHandle?.get<String>("profileImageUri") ?: "")
-//                    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
-//                    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
-//                    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
 
                     ChatScreen(navController)
                 }
@@ -172,10 +170,12 @@ fun MessagePage() {
 
 
 @Composable
-fun User(username: String,profilePic: Uri){
+fun User(username: String,profilePic: Uri, userId: String){
     val settingsIcon= painterResource(id = R.drawable.settings)
     val searchIcon= painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
+    val requestCount = fetchReceivedRequestsCount(userId).value
+
 
     var search by remember {
         mutableStateOf("")
@@ -287,7 +287,7 @@ fun User(username: String,profilePic: Uri){
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
                 Text(
-                    text = "Requests(10)",
+                    text = "Requests($requestCount)",
                     style = TextStyle(
                         fontSize = 14.sp,
                         fontWeight = FontWeight(400),
@@ -305,6 +305,19 @@ fun User(username: String,profilePic: Uri){
                 )
         }
     }
+}
+
+@Composable
+fun fetchReceivedRequestsCount(userId: String): State<Int> {
+    val requestCount = remember { mutableStateOf(0) }
+
+    LaunchedEffect(userId) {
+        loadReceivedRequestsWithDetails(userId) { receivedRequests ->
+            requestCount.value = receivedRequests.size
+        }
+    }
+
+    return requestCount
 }
 
 @Composable
