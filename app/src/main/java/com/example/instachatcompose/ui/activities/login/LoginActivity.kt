@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -114,13 +116,15 @@ fun ReturnHome(onBackPressed: () -> Unit){
         .fillMaxWidth()
     ) {
 
-        Image(painter =returnArrow ,
+        Image(
+            painter = returnArrow,
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
                 .clickable {
                     onBackPressed()
-                }
+                },
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
         )
 
     }
@@ -137,7 +141,15 @@ fun LoginForm() {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val emailIcon = painterResource(id = R.drawable.emailicon)
-    val passwordIcon = painterResource(id = R.drawable.passwordseen)
+//    val passwordIcon = painterResource(id = R.drawable.passwordseen)
+
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    val passwordIcon = if (passwordVisible) {
+        painterResource(id = R.drawable.passwordseen) // Open eye icon
+    } else {
+        painterResource(id = R.drawable.passwordinvisible) // Eye with slash icon
+    }
 
     val googleSignInClient = remember {
         GoogleSignIn.getClient(
@@ -185,7 +197,7 @@ fun LoginForm() {
             style = TextStyle(
                 fontSize = 24.sp,
                 fontWeight = FontWeight(500),
-                color = Color(0xFF050907),
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
             )
         )
@@ -197,7 +209,7 @@ fun LoginForm() {
             style = TextStyle(
                 fontSize = 14.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
             )
         )
 
@@ -212,44 +224,46 @@ fun LoginForm() {
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF050907),
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             )
             Box(
                 modifier = Modifier
                     .border(
                         width = 1.dp,
-                        color = Color(0x33333333),
+                        color = MaterialTheme.colorScheme.onBackground,
                         shape = RoundedCornerShape(size = 20.dp)
                     )
                     .height(48.dp)
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp) // Add some padding around the box
             ) {
-
-                BasicTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                    singleLine = true,
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 24.dp, top = 14.dp)
-                )
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp), // Add padding to prevent elements from touching edges
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f) // Makes text field take up available space
+                    )
 
-                if (email.isEmpty()) {
-                    Text(
-                        text = "Enter your email address",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp, top = 14.dp)
+                    Image(
+                        painter = emailIcon,
+                        contentDescription = "Email",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(start = 8.dp), // Adds spacing between text field and icon
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
                 }
-
-                Image(
-                    painter = emailIcon,
-                    contentDescription = "Email",
-                    modifier = Modifier.padding(start = 340.dp, top = 14.dp)
-                )
             }
+
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -263,48 +277,51 @@ fun LoginForm() {
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF050907),
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             )
+
             Box(
                 modifier = Modifier
                     .border(
                         width = 1.dp,
-                        color = Color(0x33333333),
+                        color = MaterialTheme.colorScheme.onBackground,
                         shape = RoundedCornerShape(size = 20.dp)
                     )
                     .height(48.dp)
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
             ) {
-
-                BasicTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions.Default.copy(
-                        keyboardType = KeyboardType.Password // Ensures a password-friendly keyboard
-                    ),
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 24.dp, top = 14.dp)
-                )
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            keyboardType = KeyboardType.Password
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
 
-                if (password.isEmpty()) {
-                    Text(
-                        text = "Enter your password",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp, top = 14.dp)
+                    Image(
+                        painter = passwordIcon,
+                        contentDescription = "Toggle Password Visibility",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(start = 8.dp)
+                            .clickable { passwordVisible = !passwordVisible }, // Toggle visibility
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
                 }
-
-                Image(
-                    painter = passwordIcon,
-                    contentDescription = "Password",
-                    modifier = Modifier.padding(start = 340.dp, top = 14.dp)
-                )
             }
+
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -343,37 +360,49 @@ fun LoginForm() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Google Sign-In button
-        Button(
-            onClick = {
-                googleSignInLauncher.launch(googleSignInClient.signInIntent)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = Color.White)
-                .padding(top = 16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = painterResource(id = R.drawable.googleicon),  // Add Google logo resource
-                    contentDescription = "Google Sign-In",
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Sign in with Google",
-                    color = Color.White,
-                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                )
-            }
+        GoogleSignInButton {
+            googleSignInLauncher.launch(googleSignInClient.signInIntent)
         }
-
         Spacer(modifier = Modifier.height(16.dp))
 
         SignUpText()
     }
 }
 
+@Composable
+fun GoogleSignInButton(onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(25.dp),
+        color = Color(0xFF2F9ECE),
+        modifier = Modifier
+            .height(54.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clickable(onClick = onClick)
+            .border(1.dp, Color.Gray, RoundedCornerShape(25.dp)) // Optional border
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp), // Padding inside the button
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.googleicon), // Google icon
+                contentDescription = "Google Sign-In",
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Sign in with Google",
+                color = Color.Black, // Text color
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
 
 //TODO: On log in, only the username pops up and not the image due to the image being called differently in the message and profile setup page.
 fun performLogin(
@@ -485,32 +514,41 @@ fun LoginBtn(
 @Composable
 fun SignUpText() {
     val context = LocalContext.current
-    val signUpText = "SignUp "
+    val signUpText = "Sign Up"
+
     val text = buildAnnotatedString {
-        append("Don't have an account?  ")
+        // Default text color
         pushStyle(
-            style = SpanStyle(
-                color = Color(android.graphics.Color.parseColor("#2F9ECE")), // Change color here
+            SpanStyle(
+                color = MaterialTheme.colorScheme.onBackground // Adapts to dark/light mode
+            )
+        )
+        append("Don't have an account? ")
+
+        // Highlighted "Sign Up" text
+        pushStyle(
+            SpanStyle(
+                color = MaterialTheme.colorScheme.primary, // Use primary color for contrast
                 textDecoration = TextDecoration.Underline
             )
         )
         append(signUpText)
-
+        pop() // Reset style after "Sign Up"
+        pop() // Reset style after normal text
     }
 
-    ClickableText(text = text, onClick = {
-        val startIndex = text.indexOf(signUpText)
-        val endIndex = startIndex + signUpText.length
-        if (it in startIndex..endIndex) {
-            // Handle click action here if needed
-            val intent = Intent(context, SignUpActivity::class.java)
-            context.startActivity(intent)
-            // For example, navigate to terms and conditions screen
-        }
-    },
+    ClickableText(
+        text = text,
+        onClick = {
+            val startIndex = text.indexOf(signUpText)
+            val endIndex = startIndex + signUpText.length
+            if (it in startIndex..endIndex) {
+                val intent = Intent(context, SignUpActivity::class.java)
+                context.startActivity(intent)
+            }
+        },
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 80.dp)
     )
 }
-

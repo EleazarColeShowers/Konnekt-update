@@ -297,7 +297,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                     modifier = Modifier
                         .size(31.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(MaterialTheme.colorScheme.onBackground)
                         .scale(1.5f)
                 )
 
@@ -308,7 +308,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                     style = TextStyle(
                         fontSize = 16.sp,
                         fontWeight = FontWeight(400),
-                        color = Color(0xFF696969),
+                        color = MaterialTheme.colorScheme.onBackground,
                     ),
                 )
             }
@@ -340,7 +340,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             style = TextStyle(
                 fontSize = 24.sp,
                 fontWeight = FontWeight(500),
-                color = Color(0xFF000000),
+                color = MaterialTheme.colorScheme.background,
             )
         )
 
@@ -370,7 +370,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                         search = it
                         performSearch(it)
                     },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                    textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.background),
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -380,7 +380,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                 if (search.isEmpty()) {
                     Text(
                         text = "Find Friends",
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.background,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -611,12 +611,11 @@ fun UserReceivesRequest() {
                             style = TextStyle(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF696969)
+                                color = MaterialTheme.colorScheme.background
                             )
                         )
                     }
 
-                    // Accept Button with onClick that removes the request from the UI upon success
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -780,7 +779,7 @@ fun BottomAppBarKonnekt(username: String,profilePic: Uri) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -849,7 +848,7 @@ fun BottomAppBarItemKonnekt(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else Color(0xFF696969) // Change text color based on active/passive state
+            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground // Change text color based on active/passive state
         )
     }
 }

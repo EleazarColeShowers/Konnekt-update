@@ -174,31 +174,40 @@ fun RoundedClickableColumn(onClick: () -> Unit) {
         }
     }
 }
-
 @Composable
 fun ExistingAccount() {
     val context = LocalContext.current
     val loginText = "Login"
+
     val text = buildAnnotatedString {
-        append("Already have an account? ")
+        // Apply the default text color from MaterialTheme
         pushStyle(
-            style = SpanStyle(
-                color = Color(android.graphics.Color.parseColor("#2F9ECE")), // Change color here
+            SpanStyle(
+                color = MaterialTheme.colorScheme.onBackground // Adapts to dark/light mode
+            )
+        )
+        append("Already have an account? ")
+
+        // Apply a different style for the "Login" text
+        pushStyle(
+            SpanStyle(
+                color = MaterialTheme.colorScheme.primary, // Use primary color for contrast
                 textDecoration = TextDecoration.Underline
             )
         )
-        Spacer(modifier = Modifier.width(2.dp))
         append(loginText)
+        pop() // Reset style after "Login"
+        pop() // Reset style after normal text
     }
 
-    ClickableText(text = text, onClick = {
-        val startIndex = text.indexOf(loginText)
-        val endIndex = startIndex + loginText.length
-        if (it in startIndex..endIndex) {
-            // Handle click action here if needed
-            val intent = Intent(context, LoginActivity::class.java)
-            context.startActivity(intent)
-            // For example, navigate to terms and conditions screen
+    ClickableText(
+        text = text,
+        onClick = {
+            val startIndex = text.indexOf(loginText)
+            val endIndex = startIndex + loginText.length
+            if (it in startIndex..endIndex) {
+                val intent = Intent(context, LoginActivity::class.java)
+                context.startActivity(intent)
             }
         },
         modifier = Modifier

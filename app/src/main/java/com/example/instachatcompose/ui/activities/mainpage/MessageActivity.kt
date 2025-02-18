@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -207,7 +208,8 @@ fun User(username: String,profilePic: Uri, userId: String){
                 style = TextStyle(
                     fontSize = 16.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF696969),
+                    color = MaterialTheme.colorScheme.onBackground
+
                 ),
             )
         }
@@ -238,7 +240,7 @@ fun User(username: String,profilePic: Uri, userId: String){
         style = TextStyle(
             fontSize = 24.sp,
             fontWeight = FontWeight(500),
-            color = Color(0xFF000000),
+            color = MaterialTheme.colorScheme.onBackground
         )
     )
     Spacer(modifier = Modifier.height(10.dp))
@@ -274,7 +276,7 @@ fun User(username: String,profilePic: Uri, userId: String){
                if (search.isEmpty()) {
                    Text(
                        text = "Search",
-                       color = Color.Gray,
+                       color = MaterialTheme.colorScheme.onBackground,
                        modifier = Modifier.padding(start = 27.dp, top = 14.dp)
                    )
                }
@@ -356,7 +358,7 @@ fun MessageFrag(username: String, navController: NavController){
             style = TextStyle(
                 fontSize = 13.sp,
                 fontWeight = FontWeight(500),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
             ),
             modifier = Modifier.width(300.dp)
         )
@@ -463,7 +465,7 @@ fun BottomAppBar(username: String,profilePic: Uri) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically // Align icons and text vertically
@@ -532,7 +534,7 @@ fun BottomAppBarItem(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else Color(0xFF696969) // Change text color based on active/passive state
+            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground // Change text color based on active/passive state
         )
     }
 }
@@ -703,6 +705,19 @@ fun MessageBubble(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val maxWidth = screenWidth * 0.7f
 
+    // Get colors based on the theme
+    val backgroundColor = if (isSentByUser) {
+        Color(0xFF2F9ECE) // Same color for sent messages
+    } else {
+        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE) // Dark gray in dark mode
+    }
+
+    val textColor = if (isSentByUser) {
+        Color.White // Sent messages always have white text
+    } else {
+        if (isSystemInDarkTheme()) Color.White else Color.Black // White text in dark mode
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -712,7 +727,7 @@ fun MessageBubble(
         Box(
             modifier = Modifier
                 .background(
-                    color = if (isSentByUser) Color(0xFF2F9ECE) else Color(0xFFEEEEEE),
+                    color = backgroundColor,
                     shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -720,7 +735,7 @@ fun MessageBubble(
         ) {
             Text(
                 text = message.text,
-                color = if (isSentByUser) Color.White else Color.Black,
+                color = textColor,
                 style = TextStyle(fontSize = 16.sp)
             )
         }
