@@ -188,16 +188,16 @@ fun ExistingAccount() {
         )
         append("Already have an account? ")
 
-        // Apply a different style for the "Login" text
+
         pushStyle(
             SpanStyle(
-                color = MaterialTheme.colorScheme.primary, // Use primary color for contrast
-                textDecoration = TextDecoration.Underline
+                color = Color(0xFF2F9ECE),
+                textDecoration = TextDecoration.None
             )
         )
         append(loginText)
-        pop() // Reset style after "Login"
-        pop() // Reset style after normal text
+        pop()
+        pop()
     }
 
     ClickableText(

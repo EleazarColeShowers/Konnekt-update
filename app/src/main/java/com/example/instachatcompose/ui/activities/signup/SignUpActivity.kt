@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -124,7 +126,10 @@ fun SignUpProgress(progress: Float, onBackPressed: () -> Unit) {
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
-                .clickable { onBackPressed() }
+                .clickable {
+                    onBackPressed()
+                },
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
         )
 
         Spacer(modifier = Modifier.width(16.dp))
@@ -158,7 +163,14 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
         mutableStateOf("")
     }
     val emailIcon= painterResource(id = R.drawable.emailicon)
-    val passwordIcon= painterResource(id = R.drawable.passwordseen)
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    val passwordIcon = if (passwordVisible) {
+        painterResource(id = R.drawable.passwordseen)
+    } else {
+        painterResource(id = R.drawable.passwordinvisible)
+    }
+
 
     Column{
 
@@ -169,7 +181,7 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
             style = TextStyle(
                 fontSize = 24.sp,
                 fontWeight = FontWeight(500),
-                color = Color(0xFF050907),
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
             )
         )
@@ -181,7 +193,7 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
             style = TextStyle(
                 fontSize = 14.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
                 )
         )
 
@@ -196,14 +208,14 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF050907),
+                    color = MaterialTheme.colorScheme.onBackground,
                     )
             )
             Box(
                 modifier = Modifier
                     .border(
                         width = 1.dp,
-                        color = Color(0x33333333),
+                        color = MaterialTheme.colorScheme.onBackground,
                         shape = RoundedCornerShape(size = 20.dp)
                     )
                     .height(48.dp)
@@ -212,20 +224,12 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
                 BasicTextField(
                     value = username,
                     onValueChange = { username = it },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                    textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 24.dp, top = 14.dp)
                 )
-
-                if (username.isEmpty()) {
-                    Text(
-                        text = "Enter your username here",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp,top=14.dp)
-                    )
-                }
             }
         }
 
@@ -240,49 +244,49 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF050907),
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             )
             Box(
                 modifier = Modifier
                     .border(
                         width = 1.dp,
-                        color = Color(0x33333333),
+                        color = MaterialTheme.colorScheme.onBackground,
                         shape = RoundedCornerShape(size = 20.dp)
                     )
                     .height(48.dp)
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
             ) {
-
-                BasicTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                    singleLine = true,
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 24.dp, top = 14.dp)
-                )
-
-                if (email.isEmpty()) {
-                    Text(
-                        text = "Enter your email address",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp,top=14.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp), // Padding for spacing
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f) // Takes up available space
+                    )
+                    Image(
+                        painter = emailIcon,
+                        contentDescription = "Email",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(start = 8.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
                 }
-
-                Image(
-                    painter = emailIcon,
-                    contentDescription = "Email",
-                    modifier=Modifier.padding(start = 340.dp, top= 14.dp)
-
-                )
             }
+
+
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-//TODO: 4.1. Enable function to toggle password visibility
+
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Top),
             horizontalAlignment = Alignment.Start,
@@ -292,48 +296,47 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
-                    color = Color(0xFF050907),
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             )
+
             Box(
                 modifier = Modifier
                     .border(
                         width = 1.dp,
-                        color = Color(0x33333333),
+                        color = MaterialTheme.colorScheme.onBackground,
                         shape = RoundedCornerShape(size = 20.dp)
                     )
                     .height(48.dp)
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
             ) {
-
-                BasicTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions.Default.copy(
-                        keyboardType = KeyboardType.Password // Ensures a password-friendly keyboard
-                    ),
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 24.dp, top = 14.dp)
-                )
-
-                if (password.isEmpty()) {
-                    Text(
-                        text = "Enter your password",
-                        color = Color.Gray,
-                        modifier = Modifier.padding(start = 24.dp,top=14.dp)
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            keyboardType = KeyboardType.Password
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Image(
+                        painter = passwordIcon,
+                        contentDescription = "Toggle Password Visibility",
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { passwordVisible = !passwordVisible },
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
                 }
-
-                Image(
-                    painter = passwordIcon,
-                    contentDescription = "Password",
-                    modifier=Modifier.padding(start = 340.dp, top= 14.dp)
-
-                )
             }
         }
        Spacer(modifier = Modifier.height(16.5.dp))
@@ -360,32 +363,43 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
 
     }
 }
-
 @Composable
 fun TermsAndConditionsText() {
     val context = LocalContext.current
     val termsAndConditions = "Terms & Conditions"
+
     val text = buildAnnotatedString {
+        val defaultTextStyle = SpanStyle(color = MaterialTheme.colorScheme.onBackground)
+
+        pushStyle(defaultTextStyle)
         append("I agree to the ")
         pushStyle(
-            style = SpanStyle(
-                color = Color(android.graphics.Color.parseColor("#2F9ECE")), // Change color here
-                textDecoration = TextDecoration.Underline
+            SpanStyle(
+                color = Color(0xFF2F9ECE),
+                textDecoration = TextDecoration.None
             )
         )
         append(termsAndConditions)
         pop()
+
         append(" of this App")
+        pop()
     }
 
-    ClickableText(text = text, onClick = {
-        val startIndex = text.indexOf(termsAndConditions)
-        val endIndex = startIndex + termsAndConditions.length
-        if (it in startIndex..endIndex) {
-            val intent = Intent(context, TermsAndConditions::class.java)
-            context.startActivity(intent)
-        }
-    })
+    ClickableText(
+        text = text,
+        onClick = {
+            val startIndex = text.indexOf(termsAndConditions)
+            val endIndex = startIndex + termsAndConditions.length
+            if (it in startIndex..endIndex) {
+                val intent = Intent(context, TermsAndConditions::class.java)
+                context.startActivity(intent)
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 80.dp)
+    )
 }
 
 @Composable
@@ -433,8 +447,8 @@ fun ContinueBtn(
     val context = LocalContext.current
 
     Surface(
-        shape = RoundedCornerShape(25.dp), // Adjust the corner radius as needed
-        color = Color(0xFF2F9ECE), // Change the background color as needed
+        shape = RoundedCornerShape(25.dp),
+        color = Color(0xFF2F9ECE),
         modifier = Modifier
             .height(54.dp)
             .fillMaxWidth()
@@ -455,7 +469,7 @@ fun ContinueBtn(
         ) {
             Text(
                 text = "Continue",
-                color = Color(0xFFFFFFFF), // Change the text color as needed
+                color = Color(0xFFFFFFFF),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(16.dp),
@@ -473,16 +487,11 @@ fun performSignUp(auth: FirebaseAuth, context: ComponentActivity, email: String,
     auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener(context) { task ->
             if (task.isSuccessful) {
                 createUser(username= usernameTxt)
-//                val uid = auth.currentUser?.uid
-//                // Save additional user details to Firestore
-//                createUser(username = String)
-
-                // Start the ProfileSetUp activity
                 val intent = Intent(context, ProfileSetUp::class.java)
                 context.startActivity(intent)
 
                 Toast.makeText(context, "Successfully sign up", Toast.LENGTH_SHORT).show()
-                onSuccess() // Call the success callback
+                onSuccess()
             } else {
                 Toast.makeText(context, "Authentication failed.", Toast.LENGTH_SHORT).show()
             }

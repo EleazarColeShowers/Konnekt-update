@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -107,20 +108,20 @@ fun ProfileSetUpPage(onBackPressed: () -> Unit){
 @Composable
 fun ProfileSetUpProgress(onBackPressed: () -> Unit){
     val returnArrow= painterResource(id = R.drawable.returnarrow)
-    val goodProgress= painterResource(id = R.drawable.bluerectangle)
-//    val noProgress= painterResource(id = R.drawable.white-rectangle)
     Spacer(modifier = Modifier.height(15.dp))
     Row(modifier= Modifier
         .fillMaxWidth()
     ) {
 
-        Image(painter =returnArrow ,
+        Image(
+            painter = returnArrow,
             contentDescription = null,
             modifier = Modifier
                 .size(24.dp)
                 .clickable {
                     onBackPressed()
-                }
+                },
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
         )
         Spacer(modifier = Modifier.width(30.dp))
         LinearProgressIndicator(
@@ -170,7 +171,7 @@ fun ProfileFill(username: String, bio: String){
             style = TextStyle(
                 fontSize = 24.sp,
                 fontWeight = FontWeight(500),
-                color = Color(0xFF050907),
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
             )
         )
@@ -182,14 +183,13 @@ fun ProfileFill(username: String, bio: String){
             style = TextStyle(
                 fontSize = 14.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
             )
         )
         Spacer(modifier = Modifier.height(48.dp))
         Box(
             modifier = Modifier
                 .padding(16.dp)
-                .background(Color.White)
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
 
@@ -206,7 +206,6 @@ fun ProfileFill(username: String, bio: String){
 
                 )
             } else {
-                // Show default content if no image is selected
                 Image(
                     painter = noPfp,
                     contentDescription = null,
@@ -219,19 +218,19 @@ fun ProfileFill(username: String, bio: String){
                     contentDescription = null,
                     modifier = Modifier
                         .size(40.dp)
-                        .offset(0.dp, 0.dp) // Adjust the offset to center the cam within nopfp
+                        .offset(0.dp, 0.dp),
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
+
                 )
+
             }
-
-
-
 
             Image(
                 painter = addPfp,
                 contentDescription = null,
                 modifier = Modifier
                     .size(28.dp)
-                    .offset(30.dp, 30.dp) // Align to the bottom right
+                    .offset(30.dp, 30.dp)
                     .clickable {
                         galleryLauncher.launch("image/*")
                     }
@@ -245,10 +244,10 @@ fun ProfileFill(username: String, bio: String){
             style = TextStyle(
                 fontSize = 16.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
             ),
-            modifier = Modifier.fillMaxWidth() // Fill the available width
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -258,10 +257,10 @@ fun ProfileFill(username: String, bio: String){
             style = TextStyle(
                 fontSize = 14.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF3333334D),
+                color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
             ),
-            modifier = Modifier.fillMaxWidth() // Fill the available width
+            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(28.dp))
         Text(
@@ -269,7 +268,7 @@ fun ProfileFill(username: String, bio: String){
             style = TextStyle(
                 fontSize = 14.sp,
                 fontWeight = FontWeight(400),
-                color = Color(0xFF696969),
+                color = MaterialTheme.colorScheme.onBackground,
             ),
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -277,7 +276,7 @@ fun ProfileFill(username: String, bio: String){
             modifier = Modifier
                 .border(
                     width = 1.dp,
-                    color = Color(0x33333333),
+                    color = MaterialTheme.colorScheme.onBackground,
                     shape = RoundedCornerShape(size = 12.dp)
                 )
                 .height(86.dp)
@@ -290,7 +289,9 @@ fun ProfileFill(username: String, bio: String){
                         bio = it
                     }
                 },
-                textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                textStyle = LocalTextStyle.current.copy(
+                    color = MaterialTheme.colorScheme.onBackground,
+                ),
                 singleLine = false,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -306,7 +307,7 @@ fun ProfileFill(username: String, bio: String){
             }
             Text(
                 text = "${bio.length}/$maxBioLength",
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier
                     .padding(end = 8.dp, bottom = 8.dp)
                     .align(Alignment.BottomEnd)
@@ -345,8 +346,8 @@ fun GetStarted(
 ) {
 
     Surface(
-        shape = RoundedCornerShape(25.dp), // Adjust the corner radius as needed
-        color = Color(0xFF2F9ECE), // Change the background color as needed
+        shape = RoundedCornerShape(25.dp),
+        color = Color(0xFF2F9ECE),
         modifier = Modifier
             .height(54.dp)
             .fillMaxWidth()
@@ -362,7 +363,7 @@ fun GetStarted(
         ) {
             Text(
                 text = "Get Started",
-                color = Color(0xFFFFFFFF), // Change the text color as needed
+                color = Color(0xFFFFFFFF),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(16.dp),

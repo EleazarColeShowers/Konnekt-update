@@ -141,14 +141,13 @@ fun LoginForm() {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val emailIcon = painterResource(id = R.drawable.emailicon)
-//    val passwordIcon = painterResource(id = R.drawable.passwordseen)
 
     var passwordVisible by remember { mutableStateOf(false) }
 
     val passwordIcon = if (passwordVisible) {
-        painterResource(id = R.drawable.passwordseen) // Open eye icon
+        painterResource(id = R.drawable.passwordseen)
     } else {
-        painterResource(id = R.drawable.passwordinvisible) // Eye with slash icon
+        painterResource(id = R.drawable.passwordinvisible)
     }
 
     val googleSignInClient = remember {
@@ -250,7 +249,7 @@ fun LoginForm() {
                         textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
                         singleLine = true,
                         modifier = Modifier
-                            .weight(1f) // Makes text field take up available space
+                            .weight(1f)
                     )
 
                     Image(
@@ -258,7 +257,7 @@ fun LoginForm() {
                         contentDescription = "Email",
                         modifier = Modifier
                             .size(24.dp)
-                            .padding(start = 8.dp), // Adds spacing between text field and icon
+                            .padding(start = 8.dp),
                         colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
                     )
                 }
@@ -309,7 +308,6 @@ fun LoginForm() {
                         ),
                         modifier = Modifier.weight(1f)
                     )
-
                     Image(
                         painter = passwordIcon,
                         contentDescription = "Toggle Password Visibility",
@@ -478,8 +476,8 @@ fun LoginBtn(
     val context = LocalContext.current
 
     Surface(
-        shape = RoundedCornerShape(25.dp), // Adjust the corner radius as needed
-        color = Color(0xFF2F9ECE), // Change the background color as needed
+        shape = RoundedCornerShape(25.dp),
+        color = Color(0xFF2F9ECE),
         modifier = Modifier
             .height(54.dp)
             .fillMaxWidth()
@@ -502,7 +500,7 @@ fun LoginBtn(
         ) {
             Text(
                 text = "Login",
-                color = Color(0xFFFFFFFF), // Change the text color as needed
+                color = Color(0xFFFFFFFF),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(16.dp),
@@ -517,24 +515,22 @@ fun SignUpText() {
     val signUpText = "Sign Up"
 
     val text = buildAnnotatedString {
-        // Default text color
         pushStyle(
             SpanStyle(
-                color = MaterialTheme.colorScheme.onBackground // Adapts to dark/light mode
+                color = MaterialTheme.colorScheme.onBackground
             )
         )
         append("Don't have an account? ")
 
-        // Highlighted "Sign Up" text
         pushStyle(
             SpanStyle(
-                color = MaterialTheme.colorScheme.primary, // Use primary color for contrast
-                textDecoration = TextDecoration.Underline
+                color = Color(0xFF2F9ECE),
+                textDecoration = TextDecoration.None
             )
         )
         append(signUpText)
-        pop() // Reset style after "Sign Up"
-        pop() // Reset style after normal text
+        pop()
+        pop()
     }
 
     ClickableText(
