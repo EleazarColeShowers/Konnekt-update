@@ -86,6 +86,7 @@ import com.google.firebase.database.database
 import com.google.firebase.firestore.auth.User
 import java.net.URLEncoder
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -393,6 +394,14 @@ fun FriendsListScreen(
                 "${friend.friendId}_${currentUserId}"
             }
 
+            var lastMessage by remember { mutableStateOf("Loading...") }
+
+            LaunchedEffect(chatId) {
+                fetchLastMessage(chatId) { message ->
+                    lastMessage = message
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -436,18 +445,49 @@ fun FriendsListScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = friendUsername,
-                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                )
+                Column {
+                    Text(
+                        text = friendUsername,
+                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = lastMessage,
+                        style = TextStyle(fontSize = 14.sp, color = Color.Gray),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
 }
 
-@Composable
-fun TextFrag(){
-    Text(text = "Hello")
+fun fetchLastMessage(chatId: String, onLastMessageFetched: (String) -> Unit) {
+    val chatsRef = FirebaseDatabase.getInstance().getReference("chats")
+
+    chatsRef.child(chatId).child("messages")
+        .orderByChild("timestamp")
+        .limitToLast(1)
+        .get()
+        .addOnSuccessListener { snapshot ->
+            Log.d("FirebaseDebug", "Snapshot exists: ${snapshot.exists()} - Children: ${snapshot.childrenCount}")
+
+            if (snapshot.exists() && snapshot.childrenCount > 0) {
+                for (child in snapshot.children) {
+                    Log.d("FirebaseDebug", "Message data: ${child.value}")
+                }
+                val lastMessage = snapshot.children.first().child("text").getValue(String::class.java) ?: "Unknown"
+                Log.d("FirebaseDebug", "Last Message: $lastMessage")
+                onLastMessageFetched(lastMessage)
+            } else {
+                Log.e("FirebaseDebug", "No messages found in chat: $chatId")
+                onLastMessageFetched("No messages yet")
+            }
+        }
+        .addOnFailureListener { exception ->
+            Log.e("FirebaseDebug", "Error fetching last message: ${exception.message}", exception)
+            onLastMessageFetched("Error fetching message")
+        }
 }
 
 enum class BottomAppBarItem {
@@ -460,15 +500,13 @@ enum class BottomAppBarItem {
 fun BottomAppBar(username: String,profilePic: Uri) {
     var activeItem by remember { mutableStateOf(BottomAppBarItem.Messages) }
     val context= LocalContext.current
-
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically // Align icons and text vertically
+        verticalAlignment = Alignment.CenterVertically
     ) {
         BottomAppBarItem(
             label = "Messages",
