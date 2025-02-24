@@ -120,7 +120,7 @@ fun SettingOption(text: String) {
             .fillMaxWidth()
             .padding(vertical = 12.dp)
             .clickable { /* Handle click */ }
-            .border(1.dp, Color(0x33333333), RoundedCornerShape(20.dp))
+            .border(1.dp, MaterialTheme.colorScheme.onBackground, RoundedCornerShape(20.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -128,7 +128,7 @@ fun SettingOption(text: String) {
             text = text,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF050907)
+            color = MaterialTheme.colorScheme.onBackground
         )
     }
 }

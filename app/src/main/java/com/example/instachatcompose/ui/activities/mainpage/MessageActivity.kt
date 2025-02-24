@@ -343,7 +343,6 @@ fun MessageFrag(username: String, navController: NavController){
                 .height(160.18.dp)
             )
         Spacer(modifier = Modifier.height(20.dp))
-//        TODO: 3. Username should appear when user logs in (already appears on sign up)
         Text(
             text = "Welcome, $username",
             style = TextStyle(
@@ -395,10 +394,14 @@ fun FriendsListScreen(
             }
 
             var lastMessage by remember { mutableStateOf("Loading...") }
+            var hasUnreadMessages by remember { mutableStateOf(false) }
 
             LaunchedEffect(chatId) {
                 fetchLastMessage(chatId) { message ->
                     lastMessage = message
+                }
+                checkUnreadMessages(chatId, currentUserId) { unread ->
+                    hasUnreadMessages = unread
                 }
             }
 
@@ -445,7 +448,9 @@ fun FriendsListScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
                         text = friendUsername,
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -457,10 +462,39 @@ fun FriendsListScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                if (hasUnreadMessages) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2F9ECE))
+                    )
+                }
             }
         }
     }
 }
+
+fun checkUnreadMessages(chatId: String, currentUserId: String, onResult: (Boolean) -> Unit) {
+    val db = Firebase.database.reference
+    val messagesRef = db.child("chats").child(chatId).child("messages")
+
+    messagesRef.addListenerForSingleValueEvent(object : ValueEventListener {
+        override fun onDataChange(snapshot: DataSnapshot) {
+            val unreadExists = snapshot.children.any { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+                message != null && message.receiverId == currentUserId && !message.seen
+            }
+            onResult(unreadExists)
+        }
+
+        override fun onCancelled(error: DatabaseError) {
+            Log.e("checkUnreadMessages", "Error checking unread messages: ${error.message}")
+            onResult(false)
+        }
+    })
+}
+
 
 fun fetchLastMessage(chatId: String, onLastMessageFetched: (String) -> Unit) {
     val chatsRef = FirebaseDatabase.getInstance().getReference("chats")
@@ -572,7 +606,7 @@ fun BottomAppBarItem(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground // Change text color based on active/passive state
+            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
         )
     }
 }
@@ -650,8 +684,16 @@ fun ChatScreen(navController: NavController) {
         messagesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-                    .sortedByDescending { it.timestamp }  // Order by latest messages
+                    .sortedByDescending { it.timestamp }
                 messages = messageList
+
+                // Mark all unread messages as read
+                snapshot.children.forEach { messageSnapshot ->
+                    val message = messageSnapshot.getValue(Message::class.java)
+                    if (message != null && message.receiverId == currentUserId && !message.seen) {
+                        messageSnapshot.ref.child("seen").setValue(true) // Update seen status in Firebase
+                    }
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -659,6 +701,7 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
+
     Log.d("ChatScreen", "Profile Image URI: $profileImageUri")
 
 
