@@ -88,6 +88,7 @@ import java.net.URLEncoder
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 
@@ -372,18 +373,34 @@ data class Friend(
     val friendId: String = "",
     val timestamp: Long = 0L
 )
-
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
     navController: NavController,
     currentUserId: String
 ) {
+    var sortedFriendList by remember { mutableStateOf(friendList) }
+
+    LaunchedEffect(friendList) {
+        val updatedList = friendList.map { (friend, details) ->
+            val chatId = if (currentUserId < friend.friendId) {
+                "${currentUserId}_${friend.friendId}"
+            } else {
+                "${friend.friendId}_${currentUserId}"
+            }
+
+            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId) // Fetch last message timestamp
+            Triple(friend, details, lastMessageTimestamp)
+        }.sortedByDescending { it.third } // Sort by latest timestamp
+
+        sortedFriendList = updatedList.map { Pair(it.first, it.second) }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(friendList) { (friend, details) ->
+        items(sortedFriendList) { (friend, details) ->
             val friendUsername = details["username"] ?: "Unknown"
             val friendProfileUri = details["profileImageUri"] ?: ""
 
@@ -474,6 +491,27 @@ fun FriendsListScreen(
         }
     }
 }
+
+suspend fun fetchLastMessageTimestamp(chatId: String): Long {
+    return try {
+        val database = Firebase.database.reference
+        val snapshot = database
+            .child("chats")
+            .child(chatId)
+            .child("messages")
+            .orderByChild("timestamp")
+            .limitToLast(1)
+            .get()
+            .await()
+
+        val message = snapshot.children.firstOrNull()
+        message?.child("timestamp")?.getValue(Long::class.java) ?: 0L
+    } catch (e: Exception) {
+        Log.e("fetchLastMessageTimestamp", "Error fetching timestamp", e)
+        0L
+    }
+}
+
 
 fun checkUnreadMessages(chatId: String, currentUserId: String, onResult: (Boolean) -> Unit) {
     val db = Firebase.database.reference
