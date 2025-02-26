@@ -402,13 +402,12 @@ fun GoogleSignInButton(onClick: () -> Unit) {
     }
 }
 
-//TODO: On log in, only the username pops up and not the image due to the image being called differently in the message and profile setup page.
 fun performLogin(
     auth: FirebaseAuth,
     context: ComponentActivity,
     email: String,
     password: String,
-    onSuccess: (String, Uri?) -> Unit,  // Accept a callback with user ID and optional URI
+    onSuccess: (String, Uri?) -> Unit,
 ) {
     if (email.isEmpty() || password.isEmpty()) {
         Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
@@ -418,7 +417,6 @@ fun performLogin(
     auth.signInWithEmailAndPassword(email, password)
         .addOnCompleteListener(context) { task ->
             if (task.isSuccessful) {
-                // Call the success callback before any further actions
                 val user = auth.currentUser
                 if (user != null) {
                     val userId = user.uid

@@ -97,7 +97,6 @@ class MessageActivity: ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             InstaChatComposeTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -119,9 +118,17 @@ fun MessagePage() {
 
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
     val currentUser = FirebaseAuth.getInstance().currentUser
-    val userId = currentUser?.uid ?: ""
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    // Load friends when the composable starts
+    var profilePicUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(userId) {
+        fetchUserProfileImage(userId) { imageUrl ->
+            profilePicUrl = imageUrl
+        }
+    }
+
+
     LaunchedEffect(userId) {
         loadFriendsWithDetails(userId) { friends ->
             friendList.clear()
@@ -136,7 +143,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                User(username = username, profilePic = profilePic, userId)
+                User(username = username, profilePicUrl = profilePicUrl, userId = userId)
             }
         },
         bottomBar = {
@@ -171,81 +178,96 @@ fun MessagePage() {
     }
 }
 
-
+fun fetchUserProfileImage(userId: String, onResult: (String?) -> Unit) {
+    val database = Firebase.database.reference
+    database.child("users").child(userId).child("profileImageUri").get()
+        .addOnSuccessListener { dataSnapshot ->
+            val imageUrl = dataSnapshot.value as? String
+            onResult(imageUrl)
+        }
+        .addOnFailureListener {
+            onResult(null)
+        }
+}
 @Composable
-fun User(username: String,profilePic: Uri, userId: String){
-    val settingsIcon= painterResource(id = R.drawable.settings)
-    val searchIcon= painterResource(id = R.drawable.searchicon)
+fun User(username: String, profilePicUrl: String?, userId: String) {
+    val settingsIcon = painterResource(id = R.drawable.settings)
+    val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
     val requestCount = fetchReceivedRequestsCount(userId).value
 
+    var search by remember { mutableStateOf("") }
 
-    var search by remember {
-        mutableStateOf("")
-    }
+    Column {
+        Row(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row {
+                if (!profilePicUrl.isNullOrEmpty()) {
+                    Image(
+                        painter = rememberImagePainter(data = profilePicUrl),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(31.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.background)
+                            .scale(1.5f)
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(id = R.drawable.nopfp), // Add a default profile image
+                        contentDescription = "Default Profile",
+                        modifier = Modifier
+                            .size(31.dp)
+                            .clip(CircleShape)
+                    )
+                }
 
-    Column{
-    Row(
-        modifier = Modifier
-            .padding(top = 8.dp)
-            .fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row{
-            val imagePainter: ImagePainter = rememberImagePainter(data = profilePic)
-            Image(
-                painter = imagePainter,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.background)
-                    .scale(1.5f)
-            )
+                Spacer(modifier = Modifier.width(4.dp))
 
-            Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = username,
+                    style = TextStyle(
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight(400),
+                        color = MaterialTheme.colorScheme.onBackground
+                    ),
+                )
+            }
 
-            Text(
-                text = username,
-                style = TextStyle(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight(400),
-                    color = MaterialTheme.colorScheme.onBackground
-
-                ),
-            )
+            Row(modifier = Modifier.clickable {
+                val intent = Intent(context, Settings::class.java)
+                context.startActivity(intent)
+            }) {
+                Image(
+                    painter = settingsIcon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Settings",
+                    style = TextStyle(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight(400),
+                        color = Color(0xFF2F9ECE),
+                    ),
+                )
+            }
         }
-
-        Row(modifier = Modifier.clickable {
-            val intent= Intent(context, Settings::class.java)
-            context.startActivity(intent)
-        }) {
-            Image(
-                painter = settingsIcon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Messages",
+            style = TextStyle(
+                fontSize = 24.sp,
+                fontWeight = FontWeight(500),
+                color = MaterialTheme.colorScheme.onBackground
             )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "Settings",
-                style = TextStyle(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight(400),
-                    color = Color(0xFF2F9ECE),
-                ),
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(12.dp))
-    Text(
-        text ="Messages",
-        style = TextStyle(
-            fontSize = 24.sp,
-            fontWeight = FontWeight(500),
-            color = MaterialTheme.colorScheme.onBackground
         )
-    )
-    Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Box(
             modifier = Modifier
                 .border(
@@ -256,32 +278,30 @@ fun User(username: String,profilePic: Uri, userId: String){
                 .height(48.dp)
                 .width(444.dp)
         ) {
-
-               Image(
-                   painter = searchIcon,
-                   contentDescription = "Search",
-                   modifier = Modifier
-                       .size(35.dp)
-                       .padding(top = 15.dp),
-               )
+            Image(
+                painter = searchIcon,
+                contentDescription = "Search",
+                modifier = Modifier
+                    .size(35.dp)
+                    .padding(top = 15.dp),
+            )
             Spacer(modifier = Modifier.width(6.dp))
-               BasicTextField(
-                   value = search,
-                   onValueChange = { search = it },
-                   textStyle = LocalTextStyle.current.copy(color = Color.Black),
-                   singleLine = true,
-                   modifier = Modifier
-                       .fillMaxWidth()
-                       .padding(top = 14.dp, start = 27.dp)
-               )
-
-               if (search.isEmpty()) {
-                   Text(
-                       text = "Search",
-                       color = MaterialTheme.colorScheme.onBackground,
-                       modifier = Modifier.padding(start = 27.dp, top = 14.dp)
-                   )
-               }
+            BasicTextField(
+                value = search,
+                onValueChange = { search = it },
+                textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp, start = 27.dp)
+            )
+            if (search.isEmpty()) {
+                Text(
+                    text = "Search",
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(start = 27.dp, top = 14.dp)
+                )
+            }
         }
         Spacer(modifier = Modifier.height(20.dp))
         Row(
@@ -290,23 +310,22 @@ fun User(username: String,profilePic: Uri, userId: String){
                 .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-                Text(
-                    text = "Requests($requestCount)",
-                    style = TextStyle(
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight(400),
-                        color = Color(0xFF2F9ECE),
-                    ),
-                )
-
-                Text(
-                    text = "Archives(1)",
-                    style = TextStyle(
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight(400),
-                        color = Color(0xFF2F9ECE),
-                    ),
-                )
+            Text(
+                text = "Requests($requestCount)",
+                style = TextStyle(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight(400),
+                    color = Color(0xFF2F9ECE),
+                ),
+            )
+            Text(
+                text = "Archives(1)",
+                style = TextStyle(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight(400),
+                    color = Color(0xFF2F9ECE),
+                ),
+            )
         }
     }
 }
