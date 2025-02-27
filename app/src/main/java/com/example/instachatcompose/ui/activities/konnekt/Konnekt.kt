@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,7 @@ import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
+import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfileImage
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
@@ -128,7 +130,6 @@ class Konnekt : ComponentActivity() {
 @Composable
 fun AddFriendsPage(currentUsername: String) {
     val navController = rememberNavController()
-
     Box(modifier = Modifier.fillMaxSize()) {
         val activity = LocalContext.current as? ComponentActivity
         val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
@@ -149,7 +150,6 @@ fun AddFriendsPage(currentUsername: String) {
                             profilePic = profilePic,
                             onSettingsClick = { navController.navigate("settings") }
                         )
-//                        ReceivedRequestsScreen()
                         UserReceivesRequest()
                     }
                 }
@@ -158,8 +158,6 @@ fun AddFriendsPage(currentUsername: String) {
                 }
             }
         }
-
-        // BottomAppBar
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -187,6 +185,14 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
     var searchPerformed by remember { mutableStateOf(false) }
     var allUsers by remember { mutableStateOf(listOf<Map<String, Any>>()) }
     var showDuplicateDialog by remember { mutableStateOf(false) }
+    var profilePicUrl by remember { mutableStateOf<String?>(null) }
+
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    LaunchedEffect(userId) {
+        fetchUserProfileImage(userId) { imageUrl ->
+            profilePicUrl = imageUrl
+        }
+    }
 
     fun performSearch(query: String) {
         if (query.isNotEmpty()) {
@@ -217,7 +223,7 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
                     }
                 }
                 allUsers = users
-                performSearch(search) // Filter results initially based on the current search
+                performSearch(search)
             }
 
             override fun onCancelled(databaseError: DatabaseError) {
@@ -237,7 +243,6 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             val sentRequestsRef = database.child(currentUserId).child("sent_requests")
             val receivedRequestsRef = database.child(targetUserId).child("received_requests")
 
-            // Check for existing friend requests
             sentRequestsRef.orderByChild("to").equalTo(targetUserId)
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
@@ -290,16 +295,25 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row {
-                val imagePainter: AsyncImagePainter = rememberAsyncImagePainter(model = profilePic)
-                Image(
-                    painter = imagePainter,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(31.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.onBackground)
-                        .scale(1.5f)
-                )
+                if (!profilePicUrl.isNullOrEmpty()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(model = profilePicUrl),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(31.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.background)                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(31.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("?", color = Color.White, fontSize = 16.sp)
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(4.dp))
 
@@ -537,7 +551,7 @@ fun loadReceivedRequestsWithDetails(
         }
     }.addOnFailureListener { exception ->
         Log.e("Firebase", "Failed to load received requests for userId: $userId", exception)
-        onRequestsLoaded(emptyList()) // Handle error gracefully
+        onRequestsLoaded(emptyList())
     }
 }
 

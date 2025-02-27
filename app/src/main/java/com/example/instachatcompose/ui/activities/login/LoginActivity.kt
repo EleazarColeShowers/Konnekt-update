@@ -340,7 +340,6 @@ fun LoginForm() {
             isChecked = isChecked,
             onClick = {
                 if (isChecked) {
-                    // Save credentials using the utility class
                     SecureStorage.saveUserCredentials(context, email, password)
                 } else {
                     Log.e(TAG, "did not save credentials")
