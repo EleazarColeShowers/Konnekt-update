@@ -26,31 +26,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DismissDirection
-import androidx.compose.material3.DismissValue
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismiss
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -67,16 +59,13 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
-import com.example.instachatcompose.ui.activities.login.LoginActivity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfileImage
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
@@ -88,7 +77,6 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
-import com.google.firebase.firestore.firestore
 
 class Konnekt : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -106,12 +94,10 @@ class Konnekt : ComponentActivity() {
             // Log failure to retrieve username
             Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
 
-            // Show a fallback username and load the UI
             loadUserUI("AnonymousUser")
         }
     }
 
-    // Function to set the content view based on the username
     private fun loadUserUI(currentUsername: String) {
         setContent {
             InstaChatComposeTheme {
@@ -120,7 +106,7 @@ class Konnekt : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        AddFriendsPage(currentUsername = currentUsername)
+                        AddFriendsPage()
                     }
                 }
             }
@@ -128,12 +114,11 @@ class Konnekt : ComponentActivity() {
     }
 }
 @Composable
-fun AddFriendsPage(currentUsername: String) {
+fun AddFriendsPage() {
     val navController = rememberNavController()
     Box(modifier = Modifier.fillMaxSize()) {
         val activity = LocalContext.current as? ComponentActivity
         val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
-        val bio: String = activity?.intent?.getStringExtra("bio") ?: "DefaultBio"
         val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
         Column(
@@ -146,16 +131,12 @@ fun AddFriendsPage(currentUsername: String) {
                 composable("user_add_friends") {
                     Column {
                         UserAddFriends(
-                            username = username,
-                            profilePic = profilePic,
-                            onSettingsClick = { navController.navigate("settings") }
+                            username = username
                         )
                         UserReceivesRequest()
                     }
                 }
-                composable("settings") {
-                    SettingsPage(navController)
-                }
+
             }
         }
         Box(
@@ -174,7 +155,7 @@ fun AddFriendsPage(currentUsername: String) {
 }
 
 @Composable
-fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Unit) {
+fun UserAddFriends(username: String) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
@@ -405,7 +386,6 @@ fun UserAddFriends(username: String, profilePic: Uri, onSettingsClick: () -> Uni
 
         LazyColumn {
             if (!searchPerformed) {
-                // Show nothing before search is performed
             } else if (searchResults.isEmpty()) {
                 item {
                     Box(
@@ -864,51 +844,5 @@ fun BottomAppBarItemKonnekt(
             fontSize = 12.sp,
             color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground // Change text color based on active/passive state
         )
-    }
-}
-
-
-@Composable
-fun SettingsPage(navController: NavController) {
-    val context = LocalContext.current
-    val auth = FirebaseAuth.getInstance()
-
-    // Handle logout
-    fun logout() {
-        auth.signOut()
-        val intent= Intent(context, LoginActivity::class.java)
-        context.startActivity(intent)
-    }
-
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text(
-            text = "Settings",
-            style = TextStyle(
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Example setting options
-        Text(text = "Option 1: Change Username")
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(text = "Option 2: Change Profile Picture")
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(text = "Option 3: Privacy Settings")
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(onClick = { /* Handle save or any action */ }) {
-            Text("Save Settings")
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Logout Button
-        Button(onClick = { logout() }) {
-            Text("Logout")
-        }
     }
 }

@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -59,16 +58,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.os.bundleOf
 import androidx.navigation.NavController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import coil.compose.AsyncImage
-import coil.compose.ImagePainter
 import coil.compose.rememberImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
@@ -83,13 +78,10 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
-import com.google.firebase.firestore.auth.User
-import java.net.URLEncoder
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 
 
 class MessageActivity: ComponentActivity() {
@@ -733,10 +725,13 @@ fun ChatScreen(navController: NavController) {
 
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
+    val typingRef = db.child("chats").child(chatId).child("typing")
 
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var messageText by remember { mutableStateOf("") }
+    var isFriendTyping by remember { mutableStateOf(false) }
 
+    // Listen for messages
     LaunchedEffect(chatId) {
         messagesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -744,11 +739,11 @@ fun ChatScreen(navController: NavController) {
                     .sortedByDescending { it.timestamp }
                 messages = messageList
 
-                // Mark all unread messages as read
+                // Mark unread messages as read
                 snapshot.children.forEach { messageSnapshot ->
                     val message = messageSnapshot.getValue(Message::class.java)
                     if (message != null && message.receiverId == currentUserId && !message.seen) {
-                        messageSnapshot.ref.child("seen").setValue(true) // Update seen status in Firebase
+                        messageSnapshot.ref.child("seen").setValue(true)
                     }
                 }
             }
@@ -759,8 +754,18 @@ fun ChatScreen(navController: NavController) {
         })
     }
 
-    Log.d("ChatScreen", "Profile Image URI: $profileImageUri")
+    // Listen for typing status
+    LaunchedEffect(chatId) {
+        typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
+            }
 
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
+            }
+        })
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -793,6 +798,15 @@ fun ChatScreen(navController: NavController) {
             )
         }
 
+        // Typing indicator at the top
+        if (isFriendTyping) {
+            Text(
+                text = "$username is typing...",
+                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
+                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+            )
+        }
+
         LazyColumn(
             modifier = Modifier.weight(1f),
             reverseLayout = true,
@@ -801,7 +815,27 @@ fun ChatScreen(navController: NavController) {
             items(messages) { message ->
                 MessageBubble(message, currentUserId)
             }
+
+            // Typing indicator at the bottom above the input field
+            if (isFriendTyping) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = "$username is typing...",
+                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            }
         }
+
+        // Message Input Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -810,7 +844,10 @@ fun ChatScreen(navController: NavController) {
         ) {
             TextField(
                 value = messageText,
-                onValueChange = { messageText = it },
+                onValueChange = {
+                    messageText = it
+                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
+                },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Type a message...") }
             )
@@ -823,8 +860,9 @@ fun ChatScreen(navController: NavController) {
                         timestamp = System.currentTimeMillis(),
                         seen = false
                     )
-                    messagesRef.push().setValue(newMessage) // ✅ Save message to Firebase
-                    messageText = ""  // Clear input field
+                    messagesRef.push().setValue(newMessage)
+                    messageText = ""
+                    typingRef.child(currentUserId).setValue(false) // Reset typing status
                 }
             }) {
                 Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
@@ -832,7 +870,6 @@ fun ChatScreen(navController: NavController) {
         }
     }
 }
-
 
 @Composable
 fun MessageBubble(
@@ -843,17 +880,16 @@ fun MessageBubble(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val maxWidth = screenWidth * 0.7f
 
-    // Get colors based on the theme
     val backgroundColor = if (isSentByUser) {
-        Color(0xFF2F9ECE) // Same color for sent messages
+        Color(0xFF2F9ECE)
     } else {
-        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE) // Dark gray in dark mode
+        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
     }
 
     val textColor = if (isSentByUser) {
-        Color.White // Sent messages always have white text
+        Color.White
     } else {
-        if (isSystemInDarkTheme()) Color.White else Color.Black // White text in dark mode
+        if (isSystemInDarkTheme()) Color.White else Color.Black
     }
 
     Column(
