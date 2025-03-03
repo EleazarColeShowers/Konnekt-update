@@ -374,16 +374,14 @@ fun MessageFrag(username: String, navController: NavController){
             ),
             modifier = Modifier.width(300.dp)
         )
-
-
     }
-
 }
 
 data class Friend(
     val friendId: String = "",
     val timestamp: Long = 0L
 )
+
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
@@ -400,9 +398,9 @@ fun FriendsListScreen(
                 "${friend.friendId}_${currentUserId}"
             }
 
-            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId) // Fetch last message timestamp
+            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
             Triple(friend, details, lastMessageTimestamp)
-        }.sortedByDescending { it.third } // Sort by latest timestamp
+        }.sortedByDescending { it.third }
 
         sortedFriendList = updatedList.map { Pair(it.first, it.second) }
     }
@@ -423,15 +421,51 @@ fun FriendsListScreen(
 
             var lastMessage by remember { mutableStateOf("Loading...") }
             var hasUnreadMessages by remember { mutableStateOf(false) }
+            var isFriendTyping by remember { mutableStateOf(false) }
 
             LaunchedEffect(chatId) {
-                fetchLastMessage(chatId) { message ->
-                    lastMessage = message
-                }
-                checkUnreadMessages(chatId, currentUserId) { unread ->
-                    hasUnreadMessages = unread
-                }
+                val db = Firebase.database.reference
+
+                // Listen for the last message
+                val lastMessageRef = db.child("chats").child(chatId).child("messages").orderByKey().limitToLast(1)
+                lastMessageRef.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        snapshot.children.forEach { child ->
+                            val message = child.child("text").getValue(String::class.java) ?: "No messages"
+                            lastMessage = message
+                        }
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendsListScreen", "Failed to load last message: ${error.message}")
+                    }
+                })
+
+                val unreadRef = db.child("chats").child(chatId).child("unread").child(currentUserId)
+                unreadRef.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        hasUnreadMessages = snapshot.getValue(Boolean::class.java) == true
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendsListScreen", "Failed to check unread messages: ${error.message}")
+                    }
+                })
+
+                val typingRef = db.child("chats").child(chatId).child("typing").child(friend.friendId)
+                typingRef.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        snapshot.getValue(Boolean::class.java)?.let { typing ->
+                            isFriendTyping = typing
+                        }
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendsListScreen", "Failed to load typing status: ${error.message}")
+                    }
+                })
             }
+
 
             Row(
                 modifier = Modifier
@@ -484,7 +518,7 @@ fun FriendsListScreen(
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = lastMessage,
+                        text = if (isFriendTyping) "Typing..." else lastMessage,
                         style = TextStyle(fontSize = 14.sp, color = Color.Gray),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -731,7 +765,6 @@ fun ChatScreen(navController: NavController) {
     var messageText by remember { mutableStateOf("") }
     var isFriendTyping by remember { mutableStateOf(false) }
 
-    // Listen for messages
     LaunchedEffect(chatId) {
         messagesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -739,7 +772,6 @@ fun ChatScreen(navController: NavController) {
                     .sortedByDescending { it.timestamp }
                 messages = messageList
 
-                // Mark unread messages as read
                 snapshot.children.forEach { messageSnapshot ->
                     val message = messageSnapshot.getValue(Message::class.java)
                     if (message != null && message.receiverId == currentUserId && !message.seen) {
@@ -754,7 +786,6 @@ fun ChatScreen(navController: NavController) {
         })
     }
 
-    // Listen for typing status
     LaunchedEffect(chatId) {
         typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -798,7 +829,6 @@ fun ChatScreen(navController: NavController) {
             )
         }
 
-        // Typing indicator at the top
         if (isFriendTyping) {
             Text(
                 text = "$username is typing...",
@@ -816,7 +846,6 @@ fun ChatScreen(navController: NavController) {
                 MessageBubble(message, currentUserId)
             }
 
-            // Typing indicator at the bottom above the input field
             if (isFriendTyping) {
                 item {
                     Box(
