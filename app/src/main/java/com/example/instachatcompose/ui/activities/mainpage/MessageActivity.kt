@@ -420,11 +420,13 @@ fun FriendsListScreen(
             }
 
             var lastMessage by remember { mutableStateOf("Loading...") }
-            var hasUnreadMessages by remember { mutableStateOf(false) }
             var isFriendTyping by remember { mutableStateOf(false) }
+
+            val hasUnreadMessages = remember { mutableStateOf(false) }
 
             LaunchedEffect(chatId) {
                 val db = Firebase.database.reference
+
 
                 // Listen for the last message
                 val lastMessageRef = db.child("chats").child(chatId).child("messages").orderByKey().limitToLast(1)
@@ -441,14 +443,19 @@ fun FriendsListScreen(
                     }
                 })
 
-                val unreadRef = db.child("chats").child(chatId).child("unread").child(currentUserId)
-                unreadRef.addValueEventListener(object : ValueEventListener {
+
+                val messagesRef = db.child("chats").child(chatId).child("messages")
+                messagesRef.addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        hasUnreadMessages = snapshot.getValue(Boolean::class.java) == true
+                        val unreadExists = snapshot.children.any { messageSnapshot ->
+                            val message = messageSnapshot.getValue(Message::class.java)
+                            message != null && message.receiverId == currentUserId && !(message.seen ?: true)
+                        }
+                        hasUnreadMessages.value = unreadExists
                     }
 
                     override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Failed to check unread messages: ${error.message}")
+                        Log.e("FriendsListScreen", "Error checking unread messages: ${error.message}")
                     }
                 })
 
@@ -488,6 +495,17 @@ fun FriendsListScreen(
                             ?.savedStateHandle
                             ?.set("currentUserId", currentUserId)
 
+                        val db = Firebase.database.reference
+                        db.child("chats").child(chatId).child("messages")
+                            .get().addOnSuccessListener { snapshot ->
+                                snapshot.children.forEach { messageSnapshot ->
+                                    val message = messageSnapshot.getValue(Message::class.java)
+                                    if (message != null && message.receiverId == currentUserId && !(message.seen ?: true)) {
+                                        messageSnapshot.ref.child("seen").setValue(true)
+                                    }
+                                }
+                            }
+                        hasUnreadMessages.value = false
                         navController.navigate("chat")
                     },
                 verticalAlignment = Alignment.CenterVertically
@@ -524,7 +542,7 @@ fun FriendsListScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (hasUnreadMessages) {
+                if (hasUnreadMessages.value) {
                     Box(
                         modifier = Modifier
                             .size(10.dp)
@@ -765,19 +783,14 @@ fun ChatScreen(navController: NavController) {
     var messageText by remember { mutableStateOf("") }
     var isFriendTyping by remember { mutableStateOf(false) }
 
+
+
     LaunchedEffect(chatId) {
         messagesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
                     .sortedByDescending { it.timestamp }
                 messages = messageList
-
-                snapshot.children.forEach { messageSnapshot ->
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    if (message != null && message.receiverId == currentUserId && !message.seen) {
-                        messageSnapshot.ref.child("seen").setValue(true)
-                    }
-                }
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -796,6 +809,19 @@ fun ChatScreen(navController: NavController) {
                 Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
             }
         })
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            messagesRef.get().addOnSuccessListener { snapshot ->
+                snapshot.children.forEach { messageSnapshot ->
+                    val message = messageSnapshot.getValue(Message::class.java)
+                    if (message != null && message.receiverId == currentUserId && message.seen) {
+                        messageSnapshot.ref.child("seen").setValue(false)
+                    }
+                }
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
