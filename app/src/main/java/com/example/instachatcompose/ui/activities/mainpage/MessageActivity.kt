@@ -459,6 +459,24 @@ fun FriendsListScreen(
                     }
                 })
 
+                val lastSeenRef = db.child("chats").child(chatId).child("lastSeen").child(currentUserId)
+
+                lastSeenRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val lastSeen = snapshot.getValue(Long::class.java) ?: 0L
+                        val unreadExists = snapshot.children.any { messageSnapshot ->
+                            val message = messageSnapshot.getValue(Message::class.java)
+                            message != null && message.receiverId == currentUserId &&
+                                    message.timestamp > lastSeen
+                        }
+                        hasUnreadMessages.value = unreadExists
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendsListScreen", "Error checking unread messages: ${error.message}")
+                    }
+                })
+
                 val typingRef = db.child("chats").child(chatId).child("typing").child(friend.friendId)
                 typingRef.addValueEventListener(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
@@ -813,14 +831,8 @@ fun ChatScreen(navController: NavController) {
 
     DisposableEffect(Unit) {
         onDispose {
-            messagesRef.get().addOnSuccessListener { snapshot ->
-                snapshot.children.forEach { messageSnapshot ->
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    if (message != null && message.receiverId == currentUserId && message.seen) {
-                        messageSnapshot.ref.child("seen").setValue(false)
-                    }
-                }
-            }
+            val lastSeenTime = System.currentTimeMillis()
+            db.child("chats").child(chatId).child("lastSeen").child(currentUserId).setValue(lastSeenTime)
         }
     }
 
