@@ -512,18 +512,6 @@ fun FriendsListScreen(
                         navController.currentBackStackEntry
                             ?.savedStateHandle
                             ?.set("currentUserId", currentUserId)
-
-                        val db = Firebase.database.reference
-                        db.child("chats").child(chatId).child("messages")
-                            .get().addOnSuccessListener { snapshot ->
-                                snapshot.children.forEach { messageSnapshot ->
-                                    val message = messageSnapshot.getValue(Message::class.java)
-                                    if (message != null && message.receiverId == currentUserId && !(message.seen ?: true)) {
-                                        messageSnapshot.ref.child("seen").setValue(true)
-                                    }
-                                }
-                            }
-                        hasUnreadMessages.value = false
                         navController.navigate("chat")
                     },
                 verticalAlignment = Alignment.CenterVertically
@@ -572,7 +560,7 @@ fun FriendsListScreen(
         }
     }
 }
-
+//TODO: fix bug of all messages being marked.
 @Composable
 fun ChatScreen(navController: NavController) {
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
@@ -616,28 +604,22 @@ fun ChatScreen(navController: NavController) {
         }
         typingRef.child(receiverUserId).addValueEventListener(typingListener)
 
-        val messagesQuery = messagesRef.child(chatId).child("messages") // 👈 Ensuring messages are only from the correct chat
+        val messagesQuery = messagesRef
             .orderByChild("receiverId")
-            .equalTo(currentUserId)
+            .equalTo(receiverUserId)
+
         messagesQuery.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 for (messageSnapshot in snapshot.children) {
                     val message = messageSnapshot.getValue(Message::class.java)
-
-                    Log.d("ChatScreen", "Checking message -> sender: ${message?.senderId}, receiver: ${message?.receiverId}, chatId: $chatId")
-
-                    // Only mark as read if it's in the correct chat and sent to the current user
-                    if (message != null && message.receiverId == currentUserId) {
-                        Log.d("ChatScreen", "✅ Marking message as read: ${messageSnapshot.key}")
+                    if (message != null && message.receiverId == currentUserId && !(message.seen ?: true)) {
                         messageSnapshot.ref.child("seen").setValue(true)
-                    } else {
-                        Log.d("ChatScreen", "❌ Skipping message (Wrong chatId or receiverId)")
                     }
                 }
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Error fetching messages: ${error.message}")
+                Log.e("ChatScreen", "Error marking messages as read: ${error.message}")
             }
         })
 
