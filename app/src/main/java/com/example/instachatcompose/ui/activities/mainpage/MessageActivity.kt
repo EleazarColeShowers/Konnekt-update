@@ -353,7 +353,7 @@ fun MessageFrag(username: String, navController: NavController){
             modifier= Modifier
                 .width(160.95.dp)
                 .height(160.18.dp)
-            )
+        )
         Spacer(modifier = Modifier.height(20.dp))
         Text(
             text = "Welcome, $username",
@@ -363,7 +363,7 @@ fun MessageFrag(username: String, navController: NavController){
                 color = Color(0xFF2F9ECE),
             ),
 
-        )
+            )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "You don’t have any friend yet, click on the “Konnekt” button below to add friends and start connecting.",
@@ -374,14 +374,16 @@ fun MessageFrag(username: String, navController: NavController){
             ),
             modifier = Modifier.width(300.dp)
         )
+
+
     }
+
 }
 
 data class Friend(
     val friendId: String = "",
     val timestamp: Long = 0L
 )
-
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
@@ -398,9 +400,9 @@ fun FriendsListScreen(
                 "${friend.friendId}_${currentUserId}"
             }
 
-            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
+            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId) // Fetch last message timestamp
             Triple(friend, details, lastMessageTimestamp)
-        }.sortedByDescending { it.third }
+        }.sortedByDescending { it.third } // Sort by latest timestamp
 
         sortedFriendList = updatedList.map { Pair(it.first, it.second) }
     }
@@ -420,77 +422,16 @@ fun FriendsListScreen(
             }
 
             var lastMessage by remember { mutableStateOf("Loading...") }
-            var isFriendTyping by remember { mutableStateOf(false) }
-
-            val hasUnreadMessages = remember { mutableStateOf(false) }
+            var hasUnreadMessages by remember { mutableStateOf(false) }
 
             LaunchedEffect(chatId) {
-                val db = Firebase.database.reference
-
-
-                // Listen for the last message
-                val lastMessageRef = db.child("chats").child(chatId).child("messages").orderByKey().limitToLast(1)
-                lastMessageRef.addValueEventListener(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        snapshot.children.forEach { child ->
-                            val message = child.child("text").getValue(String::class.java) ?: "No messages"
-                            lastMessage = message
-                        }
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Failed to load last message: ${error.message}")
-                    }
-                })
-
-
-                val messagesRef = db.child("chats").child(chatId).child("messages")
-                messagesRef.addValueEventListener(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        val unreadExists = snapshot.children.any { messageSnapshot ->
-                            val message = messageSnapshot.getValue(Message::class.java)
-                            message != null && message.receiverId == currentUserId && !(message.seen ?: true)
-                        }
-                        hasUnreadMessages.value = unreadExists
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Error checking unread messages: ${error.message}")
-                    }
-                })
-
-                val lastSeenRef = db.child("chats").child(chatId).child("lastSeen").child(currentUserId)
-
-                lastSeenRef.addListenerForSingleValueEvent(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        val lastSeen = snapshot.getValue(Long::class.java) ?: 0L
-                        val unreadExists = snapshot.children.any { messageSnapshot ->
-                            val message = messageSnapshot.getValue(Message::class.java)
-                            message != null && message.receiverId == currentUserId &&
-                                    message.timestamp > lastSeen
-                        }
-                        hasUnreadMessages.value = unreadExists
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Error checking unread messages: ${error.message}")
-                    }
-                })
-
-                val typingRef = db.child("chats").child(chatId).child("typing").child(friend.friendId)
-                typingRef.addValueEventListener(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        snapshot.getValue(Boolean::class.java)?.let { typing ->
-                            isFriendTyping = typing
-                        }
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Failed to load typing status: ${error.message}")
-                    }
-                })
+                fetchLastMessage(chatId) { message ->
+                    lastMessage = message
+                }
+                checkUnreadMessages(chatId, currentUserId) { unread ->
+                    hasUnreadMessages = unread
+                }
             }
-
 
             Row(
                 modifier = Modifier
@@ -512,6 +453,7 @@ fun FriendsListScreen(
                         navController.currentBackStackEntry
                             ?.savedStateHandle
                             ?.set("currentUserId", currentUserId)
+
                         navController.navigate("chat")
                     },
                 verticalAlignment = Alignment.CenterVertically
@@ -542,13 +484,13 @@ fun FriendsListScreen(
                         style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = if (isFriendTyping) "Typing..." else lastMessage,
+                        text = lastMessage,
                         style = TextStyle(fontSize = 14.sp, color = Color.Gray),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (hasUnreadMessages.value) {
+                if (hasUnreadMessages) {
                     Box(
                         modifier = Modifier
                             .size(10.dp)
@@ -556,173 +498,6 @@ fun FriendsListScreen(
                             .background(Color(0xFF2F9ECE))
                     )
                 }
-            }
-        }
-    }
-}
-//TODO: fix bug of all messages being marked.
-@Composable
-fun ChatScreen(navController: NavController) {
-    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-
-    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
-    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
-    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
-    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
-    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
-
-    val db = Firebase.database.reference
-    val messagesRef = db.child("chats").child(chatId).child("messages")
-    val typingRef = db.child("chats").child(chatId).child("typing")
-
-    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
-    var messageText by remember { mutableStateOf("") }
-    var isFriendTyping by remember { mutableStateOf(false) }
-
-    LaunchedEffect(chatId) {
-        val messagesListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-                    .sortedByDescending { it.timestamp }
-                messages = messageList
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
-            }
-        }
-        messagesRef.addValueEventListener(messagesListener)
-
-        val typingListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
-            }
-        }
-        typingRef.child(receiverUserId).addValueEventListener(typingListener)
-
-        val messagesQuery = messagesRef
-            .orderByChild("receiverId")
-            .equalTo(receiverUserId)
-
-        messagesQuery.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                for (messageSnapshot in snapshot.children) {
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    if (message != null && message.receiverId == currentUserId && !(message.seen ?: true)) {
-                        messageSnapshot.ref.child("seen").setValue(true)
-                    }
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Error marking messages as read: ${error.message}")
-            }
-        })
-
-
-    }
-
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (profileImageUri != Uri.EMPTY) {
-                AsyncImage(
-                    model = profileImageUri.toString(),
-                    contentDescription = "Profile Image",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.background)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Gray)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = username,
-                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            )
-        }
-
-        if (isFriendTyping) {
-            Text(
-                text = "$username is typing...",
-                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
-                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = true,
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            items(messages) { message ->
-                MessageBubble(message, currentUserId)
-            }
-
-            if (isFriendTyping) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "$username is typing...",
-                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextField(
-                value = messageText,
-                onValueChange = {
-                    messageText = it
-                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
-                },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Type a message...") }
-            )
-            IconButton(onClick = {
-                if (messageText.isNotBlank()) {
-                    val newMessage = Message(
-                        senderId = currentUserId,
-                        receiverId = receiverUserId,
-                        text = messageText,
-                        timestamp = System.currentTimeMillis(),
-                        seen = false
-                    )
-                    messagesRef.push().setValue(newMessage)
-                    messageText = ""
-                    typingRef.child(currentUserId).setValue(false) // Reset typing status
-                }
-            }) {
-                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
             }
         }
     }
@@ -746,6 +521,56 @@ suspend fun fetchLastMessageTimestamp(chatId: String): Long {
         Log.e("fetchLastMessageTimestamp", "Error fetching timestamp", e)
         0L
     }
+}
+
+
+fun checkUnreadMessages(chatId: String, currentUserId: String, onResult: (Boolean) -> Unit) {
+    val db = Firebase.database.reference
+    val messagesRef = db.child("chats").child(chatId).child("messages")
+
+    messagesRef.addListenerForSingleValueEvent(object : ValueEventListener {
+        override fun onDataChange(snapshot: DataSnapshot) {
+            val unreadExists = snapshot.children.any { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+                message != null && message.receiverId == currentUserId && !message.seen
+            }
+            onResult(unreadExists)
+        }
+
+        override fun onCancelled(error: DatabaseError) {
+            Log.e("checkUnreadMessages", "Error checking unread messages: ${error.message}")
+            onResult(false)
+        }
+    })
+}
+
+
+fun fetchLastMessage(chatId: String, onLastMessageFetched: (String) -> Unit) {
+    val chatsRef = FirebaseDatabase.getInstance().getReference("chats")
+
+    chatsRef.child(chatId).child("messages")
+        .orderByChild("timestamp")
+        .limitToLast(1)
+        .get()
+        .addOnSuccessListener { snapshot ->
+            Log.d("FirebaseDebug", "Snapshot exists: ${snapshot.exists()} - Children: ${snapshot.childrenCount}")
+
+            if (snapshot.exists() && snapshot.childrenCount > 0) {
+                for (child in snapshot.children) {
+                    Log.d("FirebaseDebug", "Message data: ${child.value}")
+                }
+                val lastMessage = snapshot.children.first().child("text").getValue(String::class.java) ?: "Unknown"
+                Log.d("FirebaseDebug", "Last Message: $lastMessage")
+                onLastMessageFetched(lastMessage)
+            } else {
+                Log.e("FirebaseDebug", "No messages found in chat: $chatId")
+                onLastMessageFetched("No messages yet")
+            }
+        }
+        .addOnFailureListener { exception ->
+            Log.e("FirebaseDebug", "Error fetching last message: ${exception.message}", exception)
+            onLastMessageFetched("Error fetching message")
+        }
 }
 
 enum class BottomAppBarItem {
@@ -886,6 +711,165 @@ data class Message(
     val timestamp: Long = 0L,
     val seen: Boolean = false
 )
+
+
+@Composable
+fun ChatScreen(navController: NavController) {
+    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+
+    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
+    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
+    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
+    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
+
+    val db = Firebase.database.reference
+    val messagesRef = db.child("chats").child(chatId).child("messages")
+    val typingRef = db.child("chats").child(chatId).child("typing")
+
+    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var messageText by remember { mutableStateOf("") }
+    var isFriendTyping by remember { mutableStateOf(false) }
+
+    // Listen for messages
+    LaunchedEffect(chatId) {
+        messagesRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                    .sortedByDescending { it.timestamp }
+                messages = messageList
+
+                // Mark unread messages as read
+                snapshot.children.forEach { messageSnapshot ->
+                    val message = messageSnapshot.getValue(Message::class.java)
+                    if (message != null && message.receiverId == currentUserId && !message.seen) {
+                        messageSnapshot.ref.child("seen").setValue(true)
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
+            }
+        })
+    }
+
+    // Listen for typing status
+    LaunchedEffect(chatId) {
+        typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
+            }
+        })
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (profileImageUri != Uri.EMPTY) {
+                AsyncImage(
+                    model = profileImageUri.toString(),
+                    contentDescription = "Profile Image",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.background)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.Gray)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = username,
+                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            )
+        }
+
+        // Typing indicator at the top
+        if (isFriendTyping) {
+            Text(
+                text = "$username is typing...",
+                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
+                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            reverseLayout = true,
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            items(messages) { message ->
+                MessageBubble(message, currentUserId)
+            }
+
+            // Typing indicator at the bottom above the input field
+            if (isFriendTyping) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = "$username is typing...",
+                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Message Input Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = messageText,
+                onValueChange = {
+                    messageText = it
+                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
+                },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Type a message...") }
+            )
+            IconButton(onClick = {
+                if (messageText.isNotBlank()) {
+                    val newMessage = Message(
+                        senderId = currentUserId,
+                        receiverId = receiverUserId,
+                        text = messageText,
+                        timestamp = System.currentTimeMillis(),
+                        seen = false
+                    )
+                    messagesRef.push().setValue(newMessage)
+                    messageText = ""
+                    typingRef.child(currentUserId).setValue(false) // Reset typing status
+                }
+            }) {
+                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+            }
+        }
+    }
+}
 
 @Composable
 fun MessageBubble(
