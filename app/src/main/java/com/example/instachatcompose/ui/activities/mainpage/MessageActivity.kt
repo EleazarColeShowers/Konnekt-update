@@ -400,9 +400,9 @@ fun FriendsListScreen(
                 "${friend.friendId}_${currentUserId}"
             }
 
-            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId) // Fetch last message timestamp
+            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
             Triple(friend, details, lastMessageTimestamp)
-        }.sortedByDescending { it.third } // Sort by latest timestamp
+        }.sortedByDescending { it.third }
 
         sortedFriendList = updatedList.map { Pair(it.first, it.second) }
     }
@@ -453,7 +453,6 @@ fun FriendsListScreen(
                         navController.currentBackStackEntry
                             ?.savedStateHandle
                             ?.set("currentUserId", currentUserId)
-
                         navController.navigate("chat")
                     },
                 verticalAlignment = Alignment.CenterVertically
@@ -503,6 +502,7 @@ fun FriendsListScreen(
     }
 }
 
+
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {
     return try {
         val database = Firebase.database.reference
@@ -522,56 +522,43 @@ suspend fun fetchLastMessageTimestamp(chatId: String): Long {
         0L
     }
 }
+fun fetchLastMessage(chatId: String, onResult: (String) -> Unit) {
+    val db = Firebase.database.reference
+    val lastMessageRef = db.child("chats").child(chatId).child("messages")
+        .orderByKey().limitToLast(1)
 
+    lastMessageRef.addValueEventListener(object : ValueEventListener {
+        override fun onDataChange(snapshot: DataSnapshot) {
+            val message = snapshot.children.firstOrNull()
+                ?.child("text")?.getValue(String::class.java) ?: "No messages"
+            onResult(message)
+        }
+
+        override fun onCancelled(error: DatabaseError) {
+            Log.e("fetchLastMessage", "Failed: ${error.message}")
+        }
+    })
+}
 
 fun checkUnreadMessages(chatId: String, currentUserId: String, onResult: (Boolean) -> Unit) {
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
 
-    messagesRef.addListenerForSingleValueEvent(object : ValueEventListener {
+    messagesRef.addValueEventListener(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
             val unreadExists = snapshot.children.any { messageSnapshot ->
                 val message = messageSnapshot.getValue(Message::class.java)
-                message != null && message.receiverId == currentUserId && !message.seen
+                message != null && message.receiverId == currentUserId && !(message.seen ?: true)
             }
             onResult(unreadExists)
         }
 
         override fun onCancelled(error: DatabaseError) {
-            Log.e("checkUnreadMessages", "Error checking unread messages: ${error.message}")
-            onResult(false)
+            Log.e("checkUnreadMessages", "Error: ${error.message}")
         }
     })
 }
 
-
-fun fetchLastMessage(chatId: String, onLastMessageFetched: (String) -> Unit) {
-    val chatsRef = FirebaseDatabase.getInstance().getReference("chats")
-
-    chatsRef.child(chatId).child("messages")
-        .orderByChild("timestamp")
-        .limitToLast(1)
-        .get()
-        .addOnSuccessListener { snapshot ->
-            Log.d("FirebaseDebug", "Snapshot exists: ${snapshot.exists()} - Children: ${snapshot.childrenCount}")
-
-            if (snapshot.exists() && snapshot.childrenCount > 0) {
-                for (child in snapshot.children) {
-                    Log.d("FirebaseDebug", "Message data: ${child.value}")
-                }
-                val lastMessage = snapshot.children.first().child("text").getValue(String::class.java) ?: "Unknown"
-                Log.d("FirebaseDebug", "Last Message: $lastMessage")
-                onLastMessageFetched(lastMessage)
-            } else {
-                Log.e("FirebaseDebug", "No messages found in chat: $chatId")
-                onLastMessageFetched("No messages yet")
-            }
-        }
-        .addOnFailureListener { exception ->
-            Log.e("FirebaseDebug", "Error fetching last message: ${exception.message}", exception)
-            onLastMessageFetched("Error fetching message")
-        }
-}
 
 enum class BottomAppBarItem {
     Messages,
