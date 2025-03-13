@@ -753,6 +753,16 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
+    LaunchedEffect(Unit) {
+        messagesRef.get().addOnSuccessListener { snapshot ->
+            snapshot.children.forEach { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+                if (message != null && message.receiverId == currentUserId && !message.seen) {
+                    messageSnapshot.ref.child("seen").setValue(true)
+                }
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -849,7 +859,7 @@ fun ChatScreen(navController: NavController) {
                     )
                     messagesRef.push().setValue(newMessage)
                     messageText = ""
-                    typingRef.child(currentUserId).setValue(false) // Reset typing status
+                    typingRef.child(currentUserId).setValue(false)
                 }
             }) {
                 Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
