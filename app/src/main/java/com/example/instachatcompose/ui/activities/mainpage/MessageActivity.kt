@@ -428,9 +428,20 @@ fun FriendsListScreen(
                 fetchLastMessage(chatId) { message ->
                     lastMessage = message
                 }
-                checkUnreadMessages(chatId, currentUserId) { unread ->
-                    hasUnreadMessages = unread
-                }
+                val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
+                db.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val unread = snapshot.children.any {
+                            val message = it.getValue(Message::class.java)
+                            message != null && message.receiverId == currentUserId && !message.seen
+                        }
+                        hasUnreadMessages = unread
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e("FriendsListScreen", "Failed to load unread messages: ${error.message}")
+                    }
+                })
             }
 
             Row(
@@ -498,6 +509,216 @@ fun FriendsListScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ChatScreen(navController: NavController) {
+    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+
+    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
+    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
+    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
+    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
+
+    val db = Firebase.database.reference
+    val messagesRef = db.child("chats").child(chatId).child("messages")
+    val typingRef = db.child("chats").child(chatId).child("typing")
+
+    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var messageText by remember { mutableStateOf("") }
+    var isFriendTyping by remember { mutableStateOf(false) }
+
+    // Listen for messages
+    LaunchedEffect(chatId) {
+        messagesRef.get().addOnSuccessListener { snapshot ->
+            snapshot.children.forEach { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+                if (message != null && message.receiverId == currentUserId && !message.seen) {
+                    messageSnapshot.ref.child("seen").setValue(true)
+                }
+            }
+        }
+
+        messagesRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                    .sortedByDescending { it.timestamp }
+                messages = messageList
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
+            }
+        })
+    }
+    // Listen for typing status
+    LaunchedEffect(chatId) {
+        typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
+            }
+        })
+    }
+    LaunchedEffect(Unit) {
+        messagesRef.get().addOnSuccessListener { snapshot ->
+            snapshot.children.forEach { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+                if (message != null && message.receiverId == currentUserId && !message.seen) {
+                    messageSnapshot.ref.child("seen").setValue(true)
+                }
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (profileImageUri != Uri.EMPTY) {
+                AsyncImage(
+                    model = profileImageUri.toString(),
+                    contentDescription = "Profile Image",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.background)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.Gray)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = username,
+                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            )
+        }
+
+        // Typing indicator at the top
+        if (isFriendTyping) {
+            Text(
+                text = "$username is typing...",
+                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
+                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            reverseLayout = true,
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            items(messages) { message ->
+                MessageBubble(message, currentUserId)
+            }
+
+            if (isFriendTyping) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = "$username is typing...",
+                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = messageText,
+                onValueChange = {
+                    messageText = it
+                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
+                },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Type a message...") }
+            )
+            IconButton(onClick = {
+                if (messageText.isNotBlank()) {
+                    val newMessage = Message(
+                        senderId = currentUserId,
+                        receiverId = receiverUserId,
+                        text = messageText,
+                        timestamp = System.currentTimeMillis(),
+                        seen = false
+                    )
+                    messagesRef.push().setValue(newMessage)
+                    messageText = ""
+                    typingRef.child(currentUserId).setValue(false)
+                }
+            }) {
+                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+            }
+        }
+    }
+}
+
+@Composable
+fun MessageBubble(
+    message: Message,
+    currentUserId: String,
+) {
+    val isSentByUser = message.senderId == currentUserId
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val maxWidth = screenWidth * 0.7f
+
+    val backgroundColor = if (isSentByUser) {
+        Color(0xFF2F9ECE)
+    } else {
+        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
+    }
+
+    val textColor = if (isSentByUser) {
+        Color.White
+    } else {
+        if (isSystemInDarkTheme()) Color.White else Color.Black
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
+        horizontalAlignment = if (isSentByUser) Alignment.End else Alignment.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = backgroundColor,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .widthIn(max = maxWidth)
+        ) {
+            Text(
+                text = message.text,
+                color = textColor,
+                style = TextStyle(fontSize = 16.sp)
+            )
         }
     }
 }
@@ -700,215 +921,3 @@ data class Message(
 )
 
 
-@Composable
-fun ChatScreen(navController: NavController) {
-    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-
-    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
-    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
-    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
-    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
-    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
-
-    val db = Firebase.database.reference
-    val messagesRef = db.child("chats").child(chatId).child("messages")
-    val typingRef = db.child("chats").child(chatId).child("typing")
-
-    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
-    var messageText by remember { mutableStateOf("") }
-    var isFriendTyping by remember { mutableStateOf(false) }
-
-    // Listen for messages
-    LaunchedEffect(chatId) {
-        messagesRef.addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-                    .sortedByDescending { it.timestamp }
-                messages = messageList
-
-                // Mark unread messages as read
-                snapshot.children.forEach { messageSnapshot ->
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    if (message != null && message.receiverId == currentUserId && !message.seen) {
-                        messageSnapshot.ref.child("seen").setValue(true)
-                    }
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
-            }
-        })
-    }
-
-    // Listen for typing status
-    LaunchedEffect(chatId) {
-        typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
-            }
-        })
-    }
-    LaunchedEffect(Unit) {
-        messagesRef.get().addOnSuccessListener { snapshot ->
-            snapshot.children.forEach { messageSnapshot ->
-                val message = messageSnapshot.getValue(Message::class.java)
-                if (message != null && message.receiverId == currentUserId && !message.seen) {
-                    messageSnapshot.ref.child("seen").setValue(true)
-                }
-            }
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (profileImageUri != Uri.EMPTY) {
-                AsyncImage(
-                    model = profileImageUri.toString(),
-                    contentDescription = "Profile Image",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.background)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Gray)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = username,
-                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            )
-        }
-
-        // Typing indicator at the top
-        if (isFriendTyping) {
-            Text(
-                text = "$username is typing...",
-                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
-                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = true,
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            items(messages) { message ->
-                MessageBubble(message, currentUserId)
-            }
-
-            // Typing indicator at the bottom above the input field
-            if (isFriendTyping) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "$username is typing...",
-                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Message Input Row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextField(
-                value = messageText,
-                onValueChange = {
-                    messageText = it
-                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
-                },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Type a message...") }
-            )
-            IconButton(onClick = {
-                if (messageText.isNotBlank()) {
-                    val newMessage = Message(
-                        senderId = currentUserId,
-                        receiverId = receiverUserId,
-                        text = messageText,
-                        timestamp = System.currentTimeMillis(),
-                        seen = false
-                    )
-                    messagesRef.push().setValue(newMessage)
-                    messageText = ""
-                    typingRef.child(currentUserId).setValue(false)
-                }
-            }) {
-                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
-            }
-        }
-    }
-}
-
-@Composable
-fun MessageBubble(
-    message: Message,
-    currentUserId: String,
-) {
-    val isSentByUser = message.senderId == currentUserId
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val maxWidth = screenWidth * 0.7f
-
-    val backgroundColor = if (isSentByUser) {
-        Color(0xFF2F9ECE)
-    } else {
-        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
-    }
-
-    val textColor = if (isSentByUser) {
-        Color.White
-    } else {
-        if (isSystemInDarkTheme()) Color.White else Color.Black
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 2.dp),
-        horizontalAlignment = if (isSentByUser) Alignment.End else Alignment.Start
-    ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = backgroundColor,
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .widthIn(max = maxWidth)
-        ) {
-            Text(
-                text = message.text,
-                color = textColor,
-                style = TextStyle(fontSize = 16.sp)
-            )
-        }
-    }
-}

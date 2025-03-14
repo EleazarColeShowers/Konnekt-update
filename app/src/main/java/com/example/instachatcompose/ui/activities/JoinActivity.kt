@@ -48,9 +48,15 @@ import com.google.firebase.auth.FirebaseAuth
 class JoinActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val auth = FirebaseAuth.getInstance()
+
+        if (auth.currentUser != null) {
+            startActivity(Intent(this, MessageActivity::class.java))
+            finish()
+            return
+        }
         setContent {
             InstaChatComposeTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -61,24 +67,11 @@ class JoinActivity: ComponentActivity() {
                             .verticalScroll(rememberScrollState())
 
                     ) {
-//                        if (checkIfUserIsLoggedIn()) {
-//                            // User is already logged in, navigate to MessageActivity
-//                            val intent = Intent(this@JoinActivity, MessageActivity::class.java)
-//                            startActivity(intent)
-//                            finish() // Finish LoginActivity to prevent going back to it on back press
-//                        } else {
                             JoinPage()
-//                        }
                     }
                 }
             }
         }
-    }
-
-    private fun checkIfUserIsLoggedIn(): Boolean {
-        val auth = FirebaseAuth.getInstance()
-        val currentUser = auth.currentUser
-        return currentUser != null
     }
 }
 
