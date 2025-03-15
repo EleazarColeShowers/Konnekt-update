@@ -67,7 +67,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
-import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfileImage
+import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfile
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
@@ -131,7 +131,6 @@ fun AddFriendsPage() {
                 composable("user_add_friends") {
                     Column {
                         UserAddFriends(
-                            username = username
                         )
                         UserReceivesRequest()
                     }
@@ -155,7 +154,7 @@ fun AddFriendsPage() {
 }
 
 @Composable
-fun UserAddFriends(username: String) {
+fun UserAddFriends() {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
@@ -167,11 +166,14 @@ fun UserAddFriends(username: String) {
     var allUsers by remember { mutableStateOf(listOf<Map<String, Any>>()) }
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
+    var username by remember { mutableStateOf("Loading...") }
+
 
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     LaunchedEffect(userId) {
-        fetchUserProfileImage(userId) { imageUrl ->
-            profilePicUrl = imageUrl
+        fetchUserProfile(userId) { fetchedUsername, fetchedProfilePicUrl ->
+            username = fetchedUsername ?: "Unknown"
+            profilePicUrl = fetchedProfilePicUrl
         }
     }
 
@@ -335,7 +337,7 @@ fun UserAddFriends(username: String) {
             style = TextStyle(
                 fontSize = 24.sp,
                 fontWeight = FontWeight(500),
-                color = MaterialTheme.colorScheme.background,
+                color = MaterialTheme.colorScheme.onBackground,
             )
         )
 
@@ -365,7 +367,7 @@ fun UserAddFriends(username: String) {
                         search = it
                         performSearch(it)
                     },
-                    textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.background),
+                    textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -375,7 +377,7 @@ fun UserAddFriends(username: String) {
                 if (search.isEmpty()) {
                     Text(
                         text = "Find Friends",
-                        color = MaterialTheme.colorScheme.background,
+                        color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -605,7 +607,7 @@ fun UserReceivesRequest() {
                             style = TextStyle(
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.background
+                                color = MaterialTheme.colorScheme.onBackground
                             )
                         )
                     }
@@ -842,7 +844,7 @@ fun BottomAppBarItemKonnekt(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground // Change text color based on active/passive state
+            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
         )
     }
 }

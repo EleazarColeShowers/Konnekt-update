@@ -10,6 +10,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,19 +21,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +50,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,6 +91,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
 import androidx.compose.runtime.*
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.tasks.await
@@ -105,7 +118,6 @@ class MessageActivity: ComponentActivity() {
 @Composable
 fun MessagePage() {
     val activity = LocalContext.current as? ComponentActivity
-    val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
     val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
@@ -113,10 +125,13 @@ fun MessagePage() {
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
+    var username by remember { mutableStateOf("Loading...") }
+
 
     LaunchedEffect(userId) {
-        fetchUserProfileImage(userId) { imageUrl ->
-            profilePicUrl = imageUrl
+        fetchUserProfile(userId) { fetchedUsername, fetchedProfilePicUrl ->
+            username = fetchedUsername ?: "Unknown"
+            profilePicUrl = fetchedProfilePicUrl
         }
     }
 
@@ -170,17 +185,20 @@ fun MessagePage() {
     }
 }
 
-fun fetchUserProfileImage(userId: String, onResult: (String?) -> Unit) {
+fun fetchUserProfile(userId: String, onResult: (String?, String?) -> Unit) {
     val database = Firebase.database.reference
-    database.child("users").child(userId).child("profileImageUri").get()
+    database.child("users").child(userId).get()
         .addOnSuccessListener { dataSnapshot ->
-            val imageUrl = dataSnapshot.value as? String
-            onResult(imageUrl)
+            val username = dataSnapshot.child("username").value as? String
+            val imageUrl = dataSnapshot.child("profileImageUri").value as? String
+            onResult(username, imageUrl)
         }
         .addOnFailureListener {
-            onResult(null)
+            onResult(null, null)
         }
 }
+
+
 @Composable
 fun User(username: String, profilePicUrl: String?, userId: String) {
     val settingsIcon = painterResource(id = R.drawable.settings)
@@ -384,6 +402,8 @@ data class Friend(
     val friendId: String = "",
     val timestamp: Long = 0L
 )
+
+
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
@@ -392,7 +412,7 @@ fun FriendsListScreen(
 ) {
     var sortedFriendList by remember { mutableStateOf(friendList) }
 
-    LaunchedEffect(friendList) {
+    LaunchedEffect(friendList.toList()) {
         val updatedList = friendList.map { (friend, details) ->
             val chatId = if (currentUserId < friend.friendId) {
                 "${currentUserId}_${friend.friendId}"
@@ -424,24 +444,30 @@ fun FriendsListScreen(
             var lastMessage by remember { mutableStateOf("Loading...") }
             var hasUnreadMessages by remember { mutableStateOf(false) }
 
-            LaunchedEffect(chatId) {
-                fetchLastMessage(chatId) { message ->
-                    lastMessage = message
-                }
+            // **Real-time Firebase listener**
+            DisposableEffect(chatId) {
                 val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
-                db.addValueEventListener(object : ValueEventListener {
+
+                val listener = object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        val unread = snapshot.children.any {
-                            val message = it.getValue(Message::class.java)
-                            message != null && message.receiverId == currentUserId && !message.seen
+                        val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                        if (messages.isNotEmpty()) {
+                            lastMessage = messages.last().text  // Update last message in real-time
                         }
-                        hasUnreadMessages = unread
+                        hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
                     }
 
                     override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendsListScreen", "Failed to load unread messages: ${error.message}")
+                        Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")
                     }
-                })
+                }
+
+                db.addValueEventListener(listener)
+
+                // **Cleanup when composable exits**
+                onDispose {
+                    db.removeEventListener(listener)
+                }
             }
 
             Row(
@@ -451,19 +477,13 @@ fun FriendsListScreen(
                     .clickable {
                         navController.currentBackStackEntry
                             ?.savedStateHandle
-                            ?.set("friendId", friend.friendId)
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("username", friendUsername)
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("profileImageUri", friendProfileUri)
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("chatId", chatId)
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("currentUserId", currentUserId)
+                            ?.apply {
+                                set("friendId", friend.friendId)
+                                set("username", friendUsername)
+                                set("profileImageUri", friendProfileUri)
+                                set("chatId", chatId)
+                                set("currentUserId", currentUserId)
+                            }
                         navController.navigate("chat")
                     },
                 verticalAlignment = Alignment.CenterVertically
@@ -516,37 +536,37 @@ fun FriendsListScreen(
 @Composable
 fun ChatScreen(navController: NavController) {
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-
     val username = savedStateHandle?.get<String>("username") ?: "Unknown"
     val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
     val chatId = savedStateHandle?.get<String>("chatId") ?: ""
     val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
     val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
-
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
-
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var messageText by remember { mutableStateOf("") }
     var isFriendTyping by remember { mutableStateOf(false) }
+    var isChatOpen by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<Message?>(null) }
 
-    // Listen for messages
-    LaunchedEffect(chatId) {
-        messagesRef.get().addOnSuccessListener { snapshot ->
-            snapshot.children.forEach { messageSnapshot ->
-                val message = messageSnapshot.getValue(Message::class.java)
-                if (message != null && message.receiverId == currentUserId && !message.seen) {
-                    messageSnapshot.ref.child("seen").setValue(true)
-                }
-            }
-        }
+
+    LaunchedEffect(chatId, isChatOpen) {
+        if (!isChatOpen) return@LaunchedEffect
 
         messagesRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val messageList = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-                    .sortedByDescending { it.timestamp }
-                messages = messageList
+                val messageList = mutableListOf<Message>()
+                for (messageSnapshot in snapshot.children) {
+                    val message = messageSnapshot.getValue(Message::class.java)
+                    if (message != null) {
+                        if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
+                            messageSnapshot.ref.child("seen").setValue(true)
+                        }
+                        messageList.add(message)
+                    }
+                }
+                messages = messageList.sortedByDescending { it.timestamp }
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -554,7 +574,12 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
-    // Listen for typing status
+
+    DisposableEffect(Unit) {
+        isChatOpen = true
+        onDispose { isChatOpen = false }
+    }
+
     LaunchedEffect(chatId) {
         typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -566,18 +591,13 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
-    LaunchedEffect(Unit) {
-        messagesRef.get().addOnSuccessListener { snapshot ->
-            snapshot.children.forEach { messageSnapshot ->
-                val message = messageSnapshot.getValue(Message::class.java)
-                if (message != null && message.receiverId == currentUserId && !message.seen) {
-                    messageSnapshot.ref.child("seen").setValue(true)
-                }
-            }
-        }
-    }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars) // Keeps top bar fixed
+    ) {
+        // **Fixed Top Bar**
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -602,118 +622,176 @@ fun ChatScreen(navController: NavController) {
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = username,
-                style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            )
-        }
-
-        // Typing indicator at the top
-        if (isFriendTyping) {
-            Text(
-                text = "$username is typing...",
-                style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray),
-                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            reverseLayout = true,
-            contentPadding = PaddingValues(8.dp)
-        ) {
-            items(messages) { message ->
-                MessageBubble(message, currentUserId)
+            Column {
+                Text(
+                    text = username,
+                    style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                )
+                if (isFriendTyping) {
+                    Text(
+                        text = "typing...",
+                        style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color = Color.Gray)
+                    )
+                }
             }
+        }
 
-            if (isFriendTyping) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "$username is typing...",
-                            style = TextStyle(fontSize = 14.sp, fontStyle = FontStyle.Italic, color =Color(0xFF2F9ECE)),
-                            modifier = Modifier.padding(8.dp)
-                        )
+        // **Chat Messages List**
+        Box(
+            modifier = Modifier
+                .weight(1f) // Makes it fill remaining space
+                .fillMaxWidth()
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                reverseLayout = true,
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                items(messages) { message ->
+                    MessageBubble(message, currentUserId) { selectedMessage ->
+                        replyingTo = selectedMessage // Store selected message for reply
                     }
                 }
             }
         }
-        Row(
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                .padding(8.dp)
+                .imePadding()
         ) {
-            TextField(
-                value = messageText,
-                onValueChange = {
-                    messageText = it
-                    typingRef.child(currentUserId).setValue(it.isNotEmpty()) // Update typing status
-                },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Type a message...") }
-            )
-            IconButton(onClick = {
-                if (messageText.isNotBlank()) {
-                    val newMessage = Message(
-                        senderId = currentUserId,
-                        receiverId = receiverUserId,
-                        text = messageText,
-                        timestamp = System.currentTimeMillis(),
-                        seen = false
-                    )
-                    messagesRef.push().setValue(newMessage)
-                    messageText = ""
-                    typingRef.child(currentUserId).setValue(false)
+            // **Replying to Preview**
+            replyingTo?.let { message ->
+                val senderName = if (message.senderId == currentUserId) "You" else username // Assuming friendName is passed
+                val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(replyBackgroundColor, RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = senderName,  // Display "You" or Friend's name
+                            color = Color(0xFF2F9ECE),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = message.text, // Display the tagged message
+                            color = MaterialTheme.colorScheme.onBackground,
+                            fontSize = 14.sp
+                        )
+                    }
+                    IconButton(onClick = { replyingTo = null }) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel Reply")
+                    }
                 }
-            }) {
-                Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+            }
+
+            val backgroundColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFF0F0F0)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (replyingTo != null) 8.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = messageText,
+                    onValueChange = {
+                        messageText = it
+                        typingRef.child(currentUserId).setValue(it.isNotEmpty())
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(backgroundColor, shape = RoundedCornerShape(24.dp)),
+                    placeholder = { Text("Type a message...", color = Color.Gray) },
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        cursorColor = Color(0xFF2F9ECE),
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = true
+                )
+
+                IconButton(onClick = {
+                    if (messageText.isNotBlank()) {
+                        val newMessage = Message(
+                            senderId = currentUserId,
+                            receiverId = receiverUserId,
+                            text = messageText,
+                            timestamp = System.currentTimeMillis(),
+                            seen = false,
+                            replyTo = replyingTo?.text // Attach the replied message
+                        )
+                        messagesRef.push().setValue(newMessage)
+                        messageText = ""
+                        replyingTo = null // Reset reply
+                        typingRef.child(currentUserId).setValue(false)
+                    }
+                }) {
+                    Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+                }
             }
         }
     }
 }
 
+
 @Composable
 fun MessageBubble(
     message: Message,
     currentUserId: String,
+    onReply: (Message) -> Unit
 ) {
     val isSentByUser = message.senderId == currentUserId
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val maxWidth = screenWidth * 0.7f
 
-    val backgroundColor = if (isSentByUser) {
-        Color(0xFF2F9ECE)
-    } else {
-        if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
-    }
+    val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
+    val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
 
-    val textColor = if (isSentByUser) {
-        Color.White
-    } else {
-        if (isSystemInDarkTheme()) Color.White else Color.Black
-    }
+    var dragOffset by remember { mutableStateOf(0f) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 2.dp),
-        horizontalAlignment = if (isSentByUser) Alignment.End else Alignment.Start
+            .draggable(
+                state = rememberDraggableState { delta ->
+                    dragOffset += delta
+                    if (dragOffset > 100 || dragOffset < -100) { // Detect both left and right swipes
+                        onReply(message)
+                        dragOffset = 0f
+                    }
+                },
+                orientation = Orientation.Horizontal
+            )
+            .padding(4.dp),
+        contentAlignment = if (isSentByUser) Alignment.CenterEnd else Alignment.CenterStart
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .background(
-                    color = backgroundColor,
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .background(backgroundColor, RoundedCornerShape(16.dp))
+                .padding(12.dp)
                 .widthIn(max = maxWidth)
         ) {
+            // Show replied message (if any)
+            message.replyTo?.let { repliedText ->
+                Text(
+                    text = "Replying to: $repliedText",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            // Main message text
             Text(
                 text = message.text,
                 color = textColor,
@@ -722,7 +800,6 @@ fun MessageBubble(
         }
     }
 }
-
 
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {
     return try {
@@ -743,43 +820,6 @@ suspend fun fetchLastMessageTimestamp(chatId: String): Long {
         0L
     }
 }
-fun fetchLastMessage(chatId: String, onResult: (String) -> Unit) {
-    val db = Firebase.database.reference
-    val lastMessageRef = db.child("chats").child(chatId).child("messages")
-        .orderByKey().limitToLast(1)
-
-    lastMessageRef.addValueEventListener(object : ValueEventListener {
-        override fun onDataChange(snapshot: DataSnapshot) {
-            val message = snapshot.children.firstOrNull()
-                ?.child("text")?.getValue(String::class.java) ?: "No messages"
-            onResult(message)
-        }
-
-        override fun onCancelled(error: DatabaseError) {
-            Log.e("fetchLastMessage", "Failed: ${error.message}")
-        }
-    })
-}
-
-fun checkUnreadMessages(chatId: String, currentUserId: String, onResult: (Boolean) -> Unit) {
-    val db = Firebase.database.reference
-    val messagesRef = db.child("chats").child(chatId).child("messages")
-
-    messagesRef.addValueEventListener(object : ValueEventListener {
-        override fun onDataChange(snapshot: DataSnapshot) {
-            val unreadExists = snapshot.children.any { messageSnapshot ->
-                val message = messageSnapshot.getValue(Message::class.java)
-                message != null && message.receiverId == currentUserId && !(message.seen ?: true)
-            }
-            onResult(unreadExists)
-        }
-
-        override fun onCancelled(error: DatabaseError) {
-            Log.e("checkUnreadMessages", "Error: ${error.message}")
-        }
-    })
-}
-
 
 enum class BottomAppBarItem {
     Messages,
@@ -917,7 +957,8 @@ data class Message(
     val receiverId: String = "",
     val text: String = "",
     val timestamp: Long = 0L,
-    val seen: Boolean = false
+    val seen: Boolean = false,
+    val replyTo: String? = null
 )
 
 
