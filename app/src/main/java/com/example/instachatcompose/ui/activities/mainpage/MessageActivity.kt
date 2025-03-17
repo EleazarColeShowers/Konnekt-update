@@ -6,10 +6,14 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -29,12 +33,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -42,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -96,6 +103,8 @@ import com.google.firebase.database.database
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -556,8 +565,7 @@ fun ChatScreen(navController: NavController) {
     var isFriendTyping by remember { mutableStateOf(false) }
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
-    val messageId = savedStateHandle?.get<String>("messageId") ?: ""
-//    val specificMessageRef = db.child("chats").child(chatId).child("messages").child(messageId)
+    var editingMessageId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(chatId, isChatOpen) {
         if (!isChatOpen) return@LaunchedEffect
@@ -660,7 +668,10 @@ fun ChatScreen(navController: NavController) {
                         message = message,
                         currentUserId = currentUserId,
                         onReply = { replyingTo = it },
-                        onEdit = { /* Implement Edit Functionality */ },
+                        onEdit ={ messageToEdit ->
+                            messageText = messageToEdit.text // Pre-fill the input field with the message's text
+                            editingMessageId = messageToEdit.id // Store the message ID being edited
+                        },
                         onDeleteForSelf = { msg ->
                             val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
                             specificMessageRef.removeValue()
@@ -671,16 +682,20 @@ fun ChatScreen(navController: NavController) {
                                     Log.e("ChatScreen", "Failed to delete message: ${error.message}")
                                 }
                         },
-                                onDeleteForEveryone = { msg ->
-                                    val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
-                                    specificMessageRef.removeValue()
-                                        .addOnSuccessListener {
-                                            Log.d("ChatScreen", "Message deleted for everyone")
-                                        }
-                                        .addOnFailureListener { error ->
-                                            Log.e("ChatScreen", "Failed to delete message: ${error.message}")
-                                        }
-                                },
+                        onDeleteForEveryone = { msg ->
+                            if (msg.id.isNotBlank()) {
+                                val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
+                                specificMessageRef.removeValue()
+                                    .addOnSuccessListener {
+                                        Log.d("ChatScreen", "Message deleted for everyone")
+                                    }
+                                    .addOnFailureListener { error ->
+                                        Log.e("ChatScreen", "Failed to delete message: ${error.message}")
+                                    }
+                            } else {
+                                Log.e("ChatScreen", "Error: Message ID is blank")
+                            }
+                        }
 
                     )
                 }
@@ -725,6 +740,39 @@ fun ChatScreen(navController: NavController) {
                     }
                 }
             }
+            // Display the message being edited
+            editingMessageId?.let { messageId ->
+                val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
+
+                val editingMessage = messages.find { it.id == messageId }
+                editingMessage?.let { message ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(replyBackgroundColor, RoundedCornerShape(8.dp))
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Editing Message",
+                                color = Color(0xFF2F9ECE),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = message.text, // Show original message
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 14.sp
+                            )
+                        }
+                        IconButton(onClick = { editingMessageId = null }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel Edit")
+                        }
+                    }
+                }
+            }
+
 
             val backgroundColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFF0F0F0)
             Row(
@@ -755,24 +803,40 @@ fun ChatScreen(navController: NavController) {
 
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
-                        val messageKey = messagesRef.push().key // Generate unique ID
-                        if (messageKey != null) {
-                            val newMessage = Message(
-                                id = messageKey, // Assign the Firebase key to the message
-                                senderId = currentUserId,
-                                receiverId = receiverUserId,
-                                text = messageText,
-                                timestamp = System.currentTimeMillis() + (0..999).random(),
-                                seen = false,
-                                replyTo = replyingTo?.text // Attach the replied message
+                        if (editingMessageId != null) {
+                            // Edit existing message
+                            val messageUpdates = mapOf(
+                                "text" to messageText,
+                                "edited" to true // Mark as edited
                             )
-                            messagesRef.child(messageKey).setValue(newMessage) // Store with correct key
-                            messageText = ""
-                            replyingTo = null // Reset reply
-                            typingRef.child(currentUserId).setValue(false)
+                            messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
+                                .addOnSuccessListener {
+                                    editingMessageId = null // Reset editing state
+                                    messageText = "" // Clear input field
+                                }
+                        } else {
+                            // Send new message
+                            val messageKey = messagesRef.push().key
+                            if (messageKey != null) {
+                                val newMessage = Message(
+                                    id = messageKey,
+                                    senderId = currentUserId,
+                                    receiverId = receiverUserId,
+                                    text = messageText,
+                                    timestamp = System.currentTimeMillis() + (0..999).random(),
+                                    seen = false,
+                                    replyTo = replyingTo?.text,
+                                    edited = false // New messages are not edited initially
+                                )
+                                messagesRef.child(messageKey).setValue(newMessage)
+                                messageText = ""
+                                replyingTo = null
+                            }
                         }
                     }
-                }) {
+                })
+
+                {
                     Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
                 }
             }
@@ -780,7 +844,7 @@ fun ChatScreen(navController: NavController) {
     }
 }
 
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
     message: Message,
@@ -795,81 +859,114 @@ fun MessageBubble(
     val maxWidth = screenWidth * 0.7f
     val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
     val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
+
     var showMenu by remember { mutableStateOf(false) }
-    var anchorPosition by remember { mutableStateOf(Offset.Zero) }
-    val density = LocalDensity.current
-    var selectedMessage by remember { mutableStateOf<Message?>(null) }
+    var rawOffsetX by remember { mutableStateOf(0f) }
+    var hasReplied by remember { mutableStateOf(false) } // Prevent multiple triggers
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { offset ->
-                        anchorPosition = offset
-                        selectedMessage = message
-                        showMenu = true
-                    }
-                )
-            }
-            .padding(4.dp),
-        contentAlignment = if (isSentByUser) Alignment.CenterEnd else Alignment.CenterStart
+    val offsetX by animateFloatAsState(
+        targetValue = rawOffsetX,
+        animationSpec = tween(durationMillis = 200)
+    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .background(backgroundColor, RoundedCornerShape(16.dp))
-                .padding(12.dp)
                 .widthIn(max = maxWidth)
-        ) {
-            message.replyTo?.let { repliedText ->
-                Text(
-                    text = "Replying to: $repliedText",
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .offset(x = offsetX.dp)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            rawOffsetX = 0f // Smoothly animate back
+                            hasReplied = false // Reset reply trigger
+                        }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        rawOffsetX = (rawOffsetX + dragAmount * 0.5f).coerceIn(-50f, 50f)
 
-            Text(
-                text = message.text,
-                color = textColor,
-                style = TextStyle(fontSize = 16.sp)
-            )
-        }
-
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false },
-            offset = with(density) { DpOffset(anchorPosition.x.toDp(), anchorPosition.y.toDp()) },
-            modifier = Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(10.dp))
-        ) {
-            DropdownMenuItem(text = { Text("Edit") }, onClick = { onEdit(message); showMenu = false })
-            DropdownMenuItem(text = { Text("Reply") }, onClick = { onReply(message); showMenu = false })
-            DropdownMenuItem(
-                text = { Text("Delete") },
-                onClick = {
-                    selectedMessage?.let {
-                        onDeleteForSelf(it) // Ensure it only deletes the selected message
+                        if (!hasReplied && (rawOffsetX <= -50f || rawOffsetX >= 50f)) {
+                            onReply(message)
+                            hasReplied = true // Ensure reply is triggered only once per drag
+                        }
                     }
+                }
+                .combinedClickable(
+                    onLongClick = { showMenu = true },
+                    onClick = {}
+                )
+                .background(backgroundColor, RoundedCornerShape(12.dp))
+                .padding(12.dp)
+        ) {
+            Column {
+                message.replyTo?.let {
+                    Text(
+                        text = "Replying to: $it",
+                        color = Color.Gray,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                Text(text = message.text, color = textColor)
+            }
+        }
+    }
+
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = { showMenu = false }
+    ) {
+        DropdownMenuItem(
+            text = { Text("Reply") },
+            onClick = {
+                onReply(message)
+                showMenu = false
+            }
+        )
+        if (isSentByUser) {
+            DropdownMenuItem(
+                text = { Text("Edit") },
+                onClick = {
+                    onEdit(message)
                     showMenu = false
                 }
             )
-            if (isSentByUser) {
-                DropdownMenuItem(text = { Text("Delete for Everyone") }, onClick = { onDeleteForEveryone(message); showMenu = false })
+        }
+        DropdownMenuItem(
+            text = { Text("Delete for Self") },
+            onClick = {
+                onDeleteForSelf(message)
+                showMenu = false
             }
+        )
+        if (isSentByUser) {
+            DropdownMenuItem(
+                text = { Text("Delete for Everyone") },
+                onClick = {
+                    onDeleteForEveryone(message)
+                    showMenu = false
+                }
+            )
         }
     }
 }
 
+
+
 data class Message(
-    val id: String = "", // Unique identifier for the message
+    val id: String = "",
     val senderId: String = "",
     val receiverId: String = "",
     val text: String = "",
-    val timestamp: Long = 0L,
+    val timestamp: Long = 0,
     val seen: Boolean = false,
-    val replyTo: String? = null
+    val replyTo: String? = null,
+    val edited: Boolean = false // New field to track edited messages
 )
+
 
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {
     return try {
