@@ -50,6 +50,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -101,10 +102,11 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
@@ -576,6 +578,9 @@ fun ChatScreen(navController: NavController) {
                 for (messageSnapshot in snapshot.children) {
                     val message = messageSnapshot.getValue(Message::class.java)
                     if (message != null) {
+                        if (message.deletedFor?.containsKey(currentUserId) == true) {
+                            continue
+                        }
                         if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
                             messageSnapshot.ref.child("seen").setValue(true)
                         }
@@ -674,13 +679,8 @@ fun ChatScreen(navController: NavController) {
                         },
                         onDeleteForSelf = { msg ->
                             val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
-                            specificMessageRef.removeValue()
-                                .addOnSuccessListener {
-                                    Log.d("ChatScreen", "Message deleted for self")
-                                }
-                                .addOnFailureListener { error ->
-                                    Log.e("ChatScreen", "Failed to delete message: ${error.message}")
-                                }
+                            specificMessageRef.child("deletedFor").child(currentUserId).setValue(true)
+
                         },
                         onDeleteForEveryone = { msg ->
                             if (msg.id.isNotBlank()) {
@@ -740,7 +740,6 @@ fun ChatScreen(navController: NavController) {
                     }
                 }
             }
-            // Display the message being edited
             editingMessageId?.let { messageId ->
                 val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
 
@@ -862,12 +861,21 @@ fun MessageBubble(
 
     var showMenu by remember { mutableStateOf(false) }
     var rawOffsetX by remember { mutableStateOf(0f) }
-    var hasReplied by remember { mutableStateOf(false) } // Prevent multiple triggers
+    var hasReplied by remember { mutableStateOf(false) }
+    val currentTime = System.currentTimeMillis()
+    val isEditable = (currentTime - message.timestamp) < (10 * 60 * 1000)
 
     val offsetX by animateFloatAsState(
         targetValue = rawOffsetX,
         animationSpec = tween(durationMillis = 200)
     )
+
+    var menuPositionPx by remember { mutableStateOf(Offset.Zero) } // Stores menu position in pixels
+    val density = LocalDensity.current
+
+    var menuPositionDp by remember {
+        mutableStateOf(DpOffset(0.dp, 0.dp))
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -881,8 +889,8 @@ fun MessageBubble(
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            rawOffsetX = 0f // Smoothly animate back
-                            hasReplied = false // Reset reply trigger
+                            rawOffsetX = 0f
+                            hasReplied = false
                         }
                     ) { change, dragAmount ->
                         change.consume()
@@ -890,8 +898,15 @@ fun MessageBubble(
 
                         if (!hasReplied && (rawOffsetX <= -50f || rawOffsetX >= 50f)) {
                             onReply(message)
-                            hasReplied = true // Ensure reply is triggered only once per drag
+                            hasReplied = true
                         }
+                    }
+                }
+                .onGloballyPositioned { coordinates ->
+                    menuPositionPx = coordinates.boundsInWindow().bottomLeft // Capture position in pixels
+
+                    menuPositionDp = with(density) {
+                        DpOffset(menuPositionPx.x.toDp(), menuPositionPx.y.toDp())
                     }
                 }
                 .combinedClickable(
@@ -913,43 +928,56 @@ fun MessageBubble(
                 Text(text = message.text, color = textColor)
             }
         }
-    }
 
-    DropdownMenu(
-        expanded = showMenu,
-        onDismissRequest = { showMenu = false }
-    ) {
-        DropdownMenuItem(
-            text = { Text("Reply") },
-            onClick = {
-                onReply(message)
-                showMenu = false
-            }
-        )
-        if (isSentByUser) {
-            DropdownMenuItem(
-                text = { Text("Edit") },
-                onClick = {
-                    onEdit(message)
-                    showMenu = false
+        // Styled Dropdown Menu
+        Box(
+            modifier = Modifier
+                .shadow(8.dp, shape = RoundedCornerShape(16.dp)) // Shadow effect
+                .background(Color.White, shape = RoundedCornerShape(16.dp)) // Curved background
+        ) {
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false },
+                offset = menuPositionDp
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Reply") },
+                    onClick = {
+                        onReply(message)
+                        showMenu = false
+                    }
+                )
+                Divider() // Line between menu items
+                if (isSentByUser) {
+                    if (isEditable) {
+                        DropdownMenuItem(
+                            text = { Text("Edit") },
+                            onClick = {
+                                onEdit(message)
+                                showMenu = false
+                            }
+                        )
+                        Divider()
+                    }
                 }
-            )
-        }
-        DropdownMenuItem(
-            text = { Text("Delete for Self") },
-            onClick = {
-                onDeleteForSelf(message)
-                showMenu = false
-            }
-        )
-        if (isSentByUser) {
-            DropdownMenuItem(
-                text = { Text("Delete for Everyone") },
-                onClick = {
-                    onDeleteForEveryone(message)
-                    showMenu = false
+                DropdownMenuItem(
+                    text = { Text("Delete for Self") },
+                    onClick = {
+                        onDeleteForSelf(message)
+                        showMenu = false
+                    }
+                )
+                Divider()
+                if (isSentByUser) {
+                    DropdownMenuItem(
+                        text = { Text("Delete for Everyone") },
+                        onClick = {
+                            onDeleteForEveryone(message)
+                            showMenu = false
+                        }
+                    )
                 }
-            )
+            }
         }
     }
 }
@@ -964,7 +992,9 @@ data class Message(
     val timestamp: Long = 0,
     val seen: Boolean = false,
     val replyTo: String? = null,
-    val edited: Boolean = false // New field to track edited messages
+    val edited: Boolean = false,
+    val deletedFor: Map<String, Boolean>? = null
+
 )
 
 
