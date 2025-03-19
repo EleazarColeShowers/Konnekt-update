@@ -14,11 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +26,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,7 +34,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,7 +41,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -858,19 +850,20 @@ fun MessageBubble(
     val maxWidth = screenWidth * 0.7f
     val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
     val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
-
     var showMenu by remember { mutableStateOf(false) }
     var rawOffsetX by remember { mutableStateOf(0f) }
     var hasReplied by remember { mutableStateOf(false) }
     val currentTime = System.currentTimeMillis()
     val isEditable = (currentTime - message.timestamp) < (10 * 60 * 1000)
+    val isDeletableForEveryone = (currentTime - message.timestamp) < (24 * 60 * 60 * 1000)
+
 
     val offsetX by animateFloatAsState(
         targetValue = rawOffsetX,
-        animationSpec = tween(durationMillis = 200)
+        animationSpec = tween(durationMillis = 200), label = ""
     )
 
-    var menuPositionPx by remember { mutableStateOf(Offset.Zero) } // Stores menu position in pixels
+    var menuPositionPx by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
 
     var menuPositionDp by remember {
@@ -903,7 +896,7 @@ fun MessageBubble(
                     }
                 }
                 .onGloballyPositioned { coordinates ->
-                    menuPositionPx = coordinates.boundsInWindow().bottomLeft // Capture position in pixels
+                    menuPositionPx = coordinates.boundsInWindow().bottomLeft
 
                     menuPositionDp = with(density) {
                         DpOffset(menuPositionPx.x.toDp(), menuPositionPx.y.toDp())
@@ -968,7 +961,7 @@ fun MessageBubble(
                     }
                 )
                 Divider()
-                if (isSentByUser) {
+                if (isSentByUser && isDeletableForEveryone) {
                     DropdownMenuItem(
                         text = { Text("Delete for Everyone") },
                         onClick = {
