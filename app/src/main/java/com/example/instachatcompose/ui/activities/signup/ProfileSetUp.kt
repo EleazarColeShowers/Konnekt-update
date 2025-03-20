@@ -161,7 +161,7 @@ fun ProfileFill(username: String, bio: String){
         if (selectedImageUri != null) {
             rememberAsyncImagePainter(selectedImageUri!!)
         } else {
-            painterResource(id = R.drawable.nopfp) // Replace with your default image resource
+            painterResource(id = R.drawable.nopfp)
         }
     )
     Column{
