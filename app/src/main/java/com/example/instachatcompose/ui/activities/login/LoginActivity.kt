@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,8 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,7 +55,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.instachatcompose.R
-import com.example.instachatcompose.ui.activities.MainActivity
 import com.example.instachatcompose.ui.activities.data.SecureStorage
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.signup.CustomCheckbox
@@ -136,7 +132,7 @@ fun LoginForm() {
     val auth = FirebaseAuth.getInstance()
 
     var isChecked by remember { mutableStateOf(false) }
-    val (savedEmail, savedPassword) = SecureStorage.getUserCredentials(context)
+//    val (savedEmail, savedPassword) = SecureStorage.getUserCredentials(context)
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -345,7 +341,7 @@ fun LoginForm() {
                     Log.e(TAG, "did not save credentials")
                 }
 
-                performLogin(auth, context as ComponentActivity, email, password, onSuccess = { username, profileImageUri ->
+                performLogin(auth, context, email, password, onSuccess = { username, profileImageUri ->
                     val intent = Intent(context, MessageActivity::class.java)
                     intent.putExtra("username", username)
                     intent.putExtra("profileUri", profileImageUri)

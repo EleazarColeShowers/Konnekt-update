@@ -224,7 +224,6 @@ fun UserAddFriends() {
 
         if (currentUserId != null) {
             val sentRequestsRef = database.child(currentUserId).child("sent_requests")
-            val receivedRequestsRef = database.child(targetUserId).child("received_requests")
 
             sentRequestsRef.orderByChild("to").equalTo(targetUserId)
                 .addListenerForSingleValueEvent(object : ValueEventListener {
@@ -497,7 +496,6 @@ fun loadReceivedRequestsWithDetails(
         Log.d("Firebase", "Snapshot exists: ${snapshot.exists()}")
 
         if (snapshot.exists()) {
-            val requests = mutableListOf<Pair<FriendRequest, Map<String, String>>>()
 
             val fetchDetailsTasks = snapshot.children.map { requestSnapshot ->
                 val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
