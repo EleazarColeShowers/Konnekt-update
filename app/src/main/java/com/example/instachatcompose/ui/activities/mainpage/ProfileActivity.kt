@@ -95,7 +95,7 @@ fun FriendProfileScreen(friendId: String) {
                     isFriend = true
                 }
             },
-            colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color.Blue)
+            colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE))
         ) {
             Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White)
         }
