@@ -318,25 +318,24 @@ fun ProfileFill(username: String, bio: String){
     GetStarted(
         onClick = {
             if (selectedImageUri != null) {
-                // Upload the profile image
                 uploadProfileImageToFirebaseStorage(
                     imageUri = selectedImageUri!!,
                     onSuccess = { downloadUrl ->
-                        // Update the user's profile in the database
-                        updateUserProfileInDatabase(username, downloadUrl)
+                        updateUserProfileInDatabase(username, downloadUrl, bio)
                         val intent = Intent(context, MessageActivity::class.java)
-                        intent.putExtra("username",username)
+                        intent.putExtra("username", username)
                         intent.putExtra("profileUri", selectedImageUri?.toString() ?: "")
                         intent.putExtra("bio", bio)
                         context.startActivity(intent)
                     },
                     onFailure = { exception ->
-                        Toast.makeText(context,"Failed to upload image: ${exception.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Failed to upload image: ${exception.message}", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
         }
     )
+
 
 }
 
@@ -396,20 +395,23 @@ fun uploadProfileImageToFirebaseStorage(
     }
 }
 
-fun updateUserProfileInDatabase(username: String, profileImageUri: String) {
+fun updateUserProfileInDatabase(username: String, profileImageUri: String, bio: String) {
     val userUid = FirebaseAuth.getInstance().currentUser?.uid ?: return
     val database = Firebase.database.reference
 
-    // Create a map of user data
+    // Create a map of user data including bio
     val userData = mapOf(
         "username" to username,
-        "profileImageUri" to profileImageUri
+        "profileImageUri" to profileImageUri,
+        "bio" to bio
     )
 
     // Save the data to the Realtime Database
-    database.child("users").child(userUid).updateChildren(userData).addOnSuccessListener {
-        Log.d("###", "User profile updated")
-    }.addOnFailureListener { exception ->
-        Log.d("###", "Failed to update user profile: ${exception.message}")
-    }
+    database.child("users").child(userUid).updateChildren(userData)
+        .addOnSuccessListener {
+            Log.d("Firebase", "User profile updated successfully")
+        }
+        .addOnFailureListener { exception ->
+            Log.e("Firebase", "Failed to update user profile: ${exception.message}")
+        }
 }

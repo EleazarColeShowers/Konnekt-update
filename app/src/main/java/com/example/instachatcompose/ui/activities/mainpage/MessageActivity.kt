@@ -422,137 +422,6 @@ data class Friend(
     val timestamp: Long = 0L
 )
 
-
-//@Composable
-//fun FriendsListScreen(
-//    friendList: List<Pair<Friend, Map<String, String>>>,
-//    navController: NavController,
-//    currentUserId: String
-//) {
-//    var sortedFriendList by remember { mutableStateOf(friendList) }
-//
-//    LaunchedEffect(friendList.toList()) {
-//        val updatedList = friendList.map { (friend, details) ->
-//            val chatId = if (currentUserId < friend.friendId) {
-//                "${currentUserId}_${friend.friendId}"
-//            } else {
-//                "${friend.friendId}_${currentUserId}"
-//            }
-//
-//            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-//            Triple(friend, details, lastMessageTimestamp)
-//        }.sortedByDescending { it.third }
-//
-//        sortedFriendList = updatedList.map { Pair(it.first, it.second) }
-//    }
-//
-//    LazyColumn(
-//        modifier = Modifier.fillMaxWidth(),
-//        verticalArrangement = Arrangement.spacedBy(8.dp)
-//    ) {
-//        items(sortedFriendList) { (friend, details) ->
-//            val friendUsername = details["username"] ?: "Unknown"
-//            val friendProfileUri = details["profileImageUri"] ?: ""
-//
-//            val chatId = if (currentUserId < friend.friendId) {
-//                "${currentUserId}_${friend.friendId}"
-//            } else {
-//                "${friend.friendId}_${currentUserId}"
-//            }
-//
-//            var lastMessage by remember { mutableStateOf("Loading...") }
-//            var hasUnreadMessages by remember { mutableStateOf(false) }
-//
-//            // **Real-time Firebase listener**
-//            DisposableEffect(chatId) {
-//                val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
-//
-//                val listener = object : ValueEventListener {
-//                    override fun onDataChange(snapshot: DataSnapshot) {
-//                        val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-//                        if (messages.isNotEmpty()) {
-//                            lastMessage = messages.last().text  // Update last message in real-time
-//                        }
-//                        hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
-//                    }
-//
-//                    override fun onCancelled(error: DatabaseError) {
-//                        Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")
-//                    }
-//                }
-//
-//                db.addValueEventListener(listener)
-//
-//                // **Cleanup when composable exits**
-//                onDispose {
-//                    db.removeEventListener(listener)
-//                }
-//            }
-//
-//            Row(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .padding(8.dp)
-//                    .clickable {
-//                        navController.currentBackStackEntry
-//                            ?.savedStateHandle
-//                            ?.apply {
-//                                set("friendId", friend.friendId)
-//                                set("username", friendUsername)
-//                                set("profileImageUri", friendProfileUri)
-//                                set("chatId", chatId)
-//                                set("currentUserId", currentUserId)
-//                            }
-//                        navController.navigate("chat")
-//                    },
-//                verticalAlignment = Alignment.CenterVertically
-//            ) {
-//                if (friendProfileUri.isNotEmpty()) {
-//                    AsyncImage(
-//                        model = friendProfileUri,
-//                        contentDescription = "Profile Image",
-//                        modifier = Modifier
-//                            .size(40.dp)
-//                            .clip(CircleShape)
-//                            .background(MaterialTheme.colorScheme.background)
-//                    )
-//                } else {
-//                    Box(
-//                        modifier = Modifier
-//                            .size(48.dp)
-//                            .clip(CircleShape)
-//                            .background(Color.Gray)
-//                    )
-//                }
-//                Spacer(modifier = Modifier.width(12.dp))
-//                Column(
-//                    modifier = Modifier.weight(1f)
-//                ) {
-//                    Text(
-//                        text = friendUsername,
-//                        style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
-//                    )
-//                    Text(
-//                        text = lastMessage,
-//                        style = TextStyle(fontSize = 14.sp, color = Color.Gray),
-//                        maxLines = 1,
-//                        overflow = TextOverflow.Ellipsis
-//                    )
-//                }
-//                if (hasUnreadMessages) {
-//                    Box(
-//                        modifier = Modifier
-//                            .size(10.dp)
-//                            .clip(CircleShape)
-//                            .background(Color(0xFF2F9ECE))
-//                    )
-//                }
-//            }
-//        }
-//
-//    }
-//}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsListScreen(
@@ -625,7 +494,7 @@ fun FriendsListScreen(
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("Remove Friend") },
-            text = { Text("Are you sure you want to remove ${friendToRemove?.friendId} as a friend?") },
+            text = { Text("Are you sure you want to remove ${friendToRemove?.let { friend -> sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend" }} as a friend?") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -634,7 +503,7 @@ fun FriendsListScreen(
                             sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
                             Toast.makeText(
                                 context,
-                                "${friend.friendId} is no longer a friend",
+                                "${friendToRemove?.let { friend -> sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend" }} is no longer a friend",
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -808,6 +677,8 @@ fun ChatScreen(navController: NavController) {
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
 
     LaunchedEffect(chatId, isChatOpen) {
         if (!isChatOpen) return@LaunchedEffect
@@ -862,7 +733,13 @@ fun ChatScreen(navController: NavController) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(16.dp)
+                .clickable {
+                    val intent = Intent(context, ProfileActivity::class.java).apply {
+                        putExtra("friendId", receiverUserId) // Pass only the userId
+                    }
+                    context.startActivity(intent)
+                },
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (profileImageUri != Uri.EMPTY) {

@@ -33,6 +33,7 @@
         <activity android:name=".ui.activities.login.LoginActivity"/>
         <activity android:name=".ui.activities.konnekt.Konnekt"/>
         <activity android:name=".ui.activities.Settings"/>
+        <activity android:name=".ui.activities.mainpage.ProfileActivity"/>
     </application>
 
 </manifest>

@@ -437,7 +437,7 @@ fun UserAddFriends() {
                             onClick= {
                                 sendFriendRequest(targetUserId)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                             border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
                         ) {
                             Image(painter = addFriend, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -621,7 +621,7 @@ fun UserReceivesRequest() {
                                     friendRequests.remove(Pair(request, userDetails))
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                             border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
                             modifier = Modifier
                                 .height(36.dp)
