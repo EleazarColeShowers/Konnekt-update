@@ -486,7 +486,7 @@ fun performSignUp(auth: FirebaseAuth, context: ComponentActivity, email: String,
 
     auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener(context) { task ->
             if (task.isSuccessful) {
-                createUser(username= usernameTxt)
+                createUser(username= usernameTxt, email = email)
                 val intent = Intent(context, ProfileSetUp::class.java)
                 context.startActivity(intent)
 
@@ -501,14 +501,21 @@ fun performSignUp(auth: FirebaseAuth, context: ComponentActivity, email: String,
         }
 }
 
-fun createUser(username: String) {
+fun createUser(username: String, email: String) {
     val firebaseAuth: FirebaseAuth = FirebaseAuth.getInstance()
     val currentUser = firebaseAuth.currentUser
     val database: DatabaseReference = Firebase.database.reference
 
-    database.child("users").child(currentUser?.uid.toString()).setValue(username).addOnSuccessListener {
-            Log.d("###","data saved ")
-        }.addOnFailureListener {
-            Log.d("###","data failed ${it.message}")
+    val userData = mapOf(
+        "username" to username,
+        "email" to email
+    )
+
+    database.child("users").child(currentUser?.uid.toString()).setValue(userData)
+        .addOnSuccessListener {
+            Log.d("###", "Data saved")
+        }
+        .addOnFailureListener {
+            Log.d("###", "Data failed ${it.message}")
         }
 }

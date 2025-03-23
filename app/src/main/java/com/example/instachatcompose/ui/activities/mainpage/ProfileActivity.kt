@@ -57,10 +57,13 @@ fun FriendProfileScreen(friendId: String) {
             bio = snapshot.child("bio").value as? String ?: "No bio"
             profileImage = snapshot.child("profileImageUri").value as? String
         }
+    }
 
-        database.child("friends").child(currentUser?.uid ?: "").child(friendId).get().addOnSuccessListener { snapshot ->
-            isFriend = snapshot.exists()
-        }
+    LaunchedEffect(friendId, currentUser?.uid) {
+        database.child("friends").child(currentUser?.uid ?: "").child(friendId).get()
+            .addOnSuccessListener { snapshot ->
+                isFriend = snapshot.exists()
+            }
     }
 
     Column(
@@ -87,11 +90,16 @@ fun FriendProfileScreen(friendId: String) {
 
         Button(
             onClick = {
+                val userRef = database.child("friends").child(currentUser?.uid ?: "").child(friendId)
+                val friendRef = database.child("friends").child(friendId).child(currentUser?.uid ?: "")
+
                 if (isFriend) {
-                    database.child("friends").child(currentUser?.uid ?: "").child(friendId).removeValue()
+                    userRef.removeValue()
+                    friendRef.removeValue()
                     isFriend = false
                 } else {
-                    database.child("friends").child(currentUser?.uid ?: "").child(friendId).setValue(true)
+                    userRef.setValue(true)
+                    friendRef.setValue(true) // Ensures both users have each other as friends
                     isFriend = true
                 }
             },

@@ -67,6 +67,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
+import com.example.instachatcompose.ui.activities.mainpage.ProfileActivity
 import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfile
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
@@ -411,7 +412,16 @@ fun UserAddFriends() {
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(Modifier.width(160.dp)) {
+                        Row(
+                            Modifier.width(160.dp)
+                                .clickable {
+                                    val intent = Intent(context, ProfileActivity::class.java).apply {
+                                        putExtra("friendId", targetUserId) // Pass only the userId
+                                    }
+                                    context.startActivity(intent)
+                                }
+                        )
+                        {
                             val painter = rememberAsyncImagePainter(model = profileImageUri)
                             Image(
                                 painter = painter,
@@ -426,7 +436,7 @@ fun UserAddFriends() {
 
                             Column {
                                 Text(text = username, fontWeight = FontWeight.Bold)
-                                Text(text = email, color = Color.Gray)
+                                Text(text = email, color = Color.Gray, fontSize = 10.sp)
                             }
                         }
                         val addFriend = painterResource(id = R.drawable.addfriends)
