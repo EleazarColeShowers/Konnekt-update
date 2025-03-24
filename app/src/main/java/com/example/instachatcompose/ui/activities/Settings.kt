@@ -68,6 +68,8 @@ fun SettingsPage() {
 
     var showDialog by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showBioDialog by remember { mutableStateOf(false) }
+
 
     val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -116,6 +118,7 @@ fun SettingsPage() {
 
         // Settings Options
         SettingOption("Change Username") { showDialog = true }
+        SettingOption("Change Bio") { showBioDialog = true }
         SettingOption("Change Profile Picture") { pickImageLauncher.launch("image/*") }
         SettingOption("Privacy Settings") { }
 
@@ -154,6 +157,15 @@ fun SettingsPage() {
             onConfirm = { newUsername ->
                 updateUsername(newUsername)
                 showDialog = false
+            }
+        )
+    }
+    if (showBioDialog) {
+        ChangeBioDialog(
+            onDismiss = { showBioDialog = false },
+            onConfirm = { newBio ->
+                updateBio(newBio)
+                showBioDialog = false
             }
         )
     }
@@ -225,10 +237,10 @@ fun updateUsername(newUsername: String) {
                     database.child("users").child(user.uid).child("username")
                         .setValue(newUsername)
                         .addOnSuccessListener {
-                            Log.d("UpdateUsername", "Username updated successfully in Realtime DB")
+                            Log.d("UpdateUsername", "Username updated successfully ")
                         }
                         .addOnFailureListener { e ->
-                            Log.e("UpdateUsername", "Error updating username in Realtime DB", e)
+                            Log.e("UpdateUsername", "Error updating username", e)
                         }
                 }
             }
@@ -265,3 +277,50 @@ fun uploadImageToFirebase(
     }
 }
 
+@Composable
+fun ChangeBioDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var newBio by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        title = { Text("Change Bio") },
+        text = {
+            Column {
+                Text("Enter your new bio:")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = newBio,
+                    onValueChange = { newBio = it },
+                    label = { Text("New Bio") }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(newBio) }) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            Button(onClick = { onDismiss() }) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+
+fun updateBio(newBio: String) {
+    val user = FirebaseAuth.getInstance().currentUser
+    val database = FirebaseDatabase.getInstance().reference
+
+    user?.let {
+        database.child("users").child(user.uid).child("bio")
+            .setValue(newBio)
+            .addOnSuccessListener {
+                Log.d("UpdateBio", "Bio updated successfully in Realtime DB")
+            }
+            .addOnFailureListener { e ->
+                Log.e("UpdateBio", "Error updating bio in Realtime DB", e)
+            }
+    }
+}

@@ -519,6 +519,7 @@ fun loadReceivedRequestsWithDetails(
                     val userSnapshot = userSnapshotTask.result
                     val userDetails = if (userSnapshot.exists()) {
                         mapOf(
+                            "friendId" to from, // Store the sender's userId
                             "username" to (userSnapshot.child("username").getValue(String::class.java) ?: "Unknown User"),
                             "profileImageUri" to (userSnapshot.child("profileImageUri").getValue(String::class.java) ?: "")
                         )
@@ -552,6 +553,7 @@ fun UserReceivesRequest() {
     val userId = currentUser?.uid ?: ""
     val showDialog = remember { mutableStateOf(false) }
     val message = remember { mutableStateOf("") }
+    val context= LocalContext.current
 
     LaunchedEffect(userId) {
         Log.d("UserReceivesRequest", "Fetching friend requests for $userId")
@@ -579,6 +581,7 @@ fun UserReceivesRequest() {
             items(friendRequests) { (request, userDetails) ->
                 val username = userDetails["username"] ?: "Unknown User"
                 val profileImageUri = userDetails["profileImageUri"]
+                val friendId = userDetails["friendId"] ?: ""
 
                 Row(
                     modifier = Modifier
@@ -590,6 +593,12 @@ fun UserReceivesRequest() {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
+                            .clickable {
+                                val intent = Intent(context, ProfileActivity::class.java).apply {
+                                    putExtra("friendId", friendId) // Pass only the userId
+                                }
+                                context.startActivity(intent)
+                            }
                     ) {
                         if (!profileImageUri.isNullOrEmpty()) {
                             AsyncImage(

@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,46 +67,69 @@ fun FriendProfileScreen(friendId: String) {
             }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(16.dp),
+        contentAlignment = Alignment.TopCenter
     ) {
-        Image(
-            painter = rememberAsyncImagePainter(profileImage ?: R.drawable.nopfp),
-            contentDescription = "Profile Picture",
-            modifier = Modifier
-                .size(100.dp)
-                .clip(CircleShape)
-                .background(Color.Gray)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(username, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text(email, fontSize = 16.sp, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(bio, fontSize = 14.sp)
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = {
-                val userRef = database.child("friends").child(currentUser?.uid ?: "").child(friendId)
-                val friendRef = database.child("friends").child(friendId).child(currentUser?.uid ?: "")
-
-                if (isFriend) {
-                    userRef.removeValue()
-                    friendRef.removeValue()
-                    isFriend = false
-                } else {
-                    userRef.setValue(true)
-                    friendRef.setValue(true) // Ensures both users have each other as friends
-                    isFriend = true
-                }
-            },
-            colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE))
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White)
+            Spacer(modifier = Modifier.height(40.dp))
+            Image(
+                painter = rememberAsyncImagePainter(profileImage ?: R.drawable.nopfp),
+                contentDescription = "Profile Picture",
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(Color.Gray)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(username, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(email, fontSize = 16.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .padding(8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Text(
+                    text = bio,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Button(
+                onClick = {
+                    val userRef = database.child("friends").child(currentUser?.uid ?: "").child(friendId)
+                    val friendRef = database.child("friends").child(friendId).child(currentUser?.uid ?: "")
+                    if (isFriend) {
+                        userRef.removeValue()
+                        friendRef.removeValue()
+                        isFriend = false
+                    } else {
+                        userRef.setValue(true)
+                        friendRef.setValue(true)
+                        isFriend = true
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(0.8f)
+            ) {
+                Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
+            }
         }
     }
 }
