@@ -643,8 +643,8 @@ fun UserReceivesRequest() {
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
                             border = BorderStroke(1.dp, Color(0xFF2F9ECE)),
                             modifier = Modifier
-                                .height(36.dp)
-                                .width(70.dp)
+                                .height(33.dp)
+                                .width(80.dp)
                         ) {
                             Text(
                                 text = "Accept",

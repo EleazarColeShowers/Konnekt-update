@@ -61,9 +61,9 @@ fun FriendProfileScreen(friendId: String) {
     }
 
     LaunchedEffect(friendId, currentUser?.uid) {
-        database.child("friends").child(currentUser?.uid ?: "").child(friendId).get()
+        database.child("users").child(currentUser?.uid ?: "").child("friends").get()
             .addOnSuccessListener { snapshot ->
-                isFriend = snapshot.exists()
+                isFriend = snapshot.children.any { it.child("friendId").value == friendId }
             }
     }
 
@@ -112,16 +112,40 @@ fun FriendProfileScreen(friendId: String) {
 
             Button(
                 onClick = {
-                    val userRef = database.child("friends").child(currentUser?.uid ?: "").child(friendId)
-                    val friendRef = database.child("friends").child(friendId).child(currentUser?.uid ?: "")
+                    val currentUserId = currentUser?.uid ?: return@Button
+                    val userFriendsRef = database.child("users").child(currentUserId).child("friends").push()
+                    val friendFriendsRef = database.child("users").child(friendId).child("friends").push()
+
                     if (isFriend) {
-                        userRef.removeValue()
-                        friendRef.removeValue()
+                        // Remove friend by finding and deleting the unique entry
+                        database.child("users").child(currentUserId).child("friends").get()
+                            .addOnSuccessListener { snapshot ->
+                                snapshot.children.forEach { child ->
+                                    if (child.child("friendId").value == friendId) {
+                                        child.ref.removeValue()
+                                    }
+                                }
+                            }
+
+                        database.child("users").child(friendId).child("friends").get()
+                            .addOnSuccessListener { snapshot ->
+                                snapshot.children.forEach { child ->
+                                    if (child.child("friendId").value == currentUserId) {
+                                        child.ref.removeValue()
+                                    }
+                                }
+                            }
+
                         isFriend = false
                     } else {
-                        userRef.setValue(true)
-                        friendRef.setValue(true)
-                        isFriend = true
+                        val friendshipData = mapOf("friendId" to friendId, "timestamp" to System.currentTimeMillis())
+                        val reverseFriendshipData = mapOf("friendId" to currentUserId, "timestamp" to System.currentTimeMillis())
+
+                        userFriendsRef.setValue(friendshipData).addOnSuccessListener {
+                            friendFriendsRef.setValue(reverseFriendshipData).addOnSuccessListener {
+                                isFriend = true
+                            }
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
@@ -130,6 +154,7 @@ fun FriendProfileScreen(friendId: String) {
             ) {
                 Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
             }
+
         }
     }
 }

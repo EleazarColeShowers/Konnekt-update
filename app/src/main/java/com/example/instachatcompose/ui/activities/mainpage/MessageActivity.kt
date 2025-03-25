@@ -729,7 +729,6 @@ fun ChatScreen(navController: NavController) {
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.statusBars) // Keeps top bar fixed
     ) {
-        // **Fixed Top Bar**
         Row(
             modifier = Modifier
                 .fillMaxWidth()
