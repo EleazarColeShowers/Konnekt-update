@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
@@ -51,16 +52,19 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismiss
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -142,9 +146,11 @@ fun MessagePage() {
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
     val currentUser = FirebaseAuth.getInstance().currentUser
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-
+    var showCreateGroupDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
+    var searchQuery by remember { mutableStateOf("") }
+
 
 
     LaunchedEffect(userId) {
@@ -169,7 +175,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                User(username = username, profilePicUrl = profilePicUrl, userId = userId)
+                User(username = username, profilePicUrl = profilePicUrl, userId = userId, searchQuery = searchQuery, onSearchQueryChange = {searchQuery= it})
             }
         },
         bottomBar = {
@@ -177,6 +183,15 @@ fun MessagePage() {
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
                 BottomAppBar(username = username, profilePic = profilePic)
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showCreateGroupDialog = true },
+                modifier = Modifier.padding(bottom = 6.dp), // Adjust to avoid overlap with BottomBar
+                containerColor = Color(0xFF2F9ECE)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Create Group", tint = Color.White)
             }
         }
     ) { innerPadding ->
@@ -191,7 +206,8 @@ fun MessagePage() {
                     FriendsListScreen(
                         friendList = friendList,
                         navController = navController,
-                        currentUserId = userId
+                        currentUserId = userId,
+                        searchQuery = searchQuery
                     )
                 }
 
@@ -202,7 +218,43 @@ fun MessagePage() {
             }
         }
     }
+    if (showCreateGroupDialog) {
+        CreateGroupDialog(onDismiss = { showCreateGroupDialog = false })
+    }
 }
+
+@Composable
+fun CreateGroupDialog(onDismiss: () -> Unit) {
+    var groupName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        title = { Text("Create New Group") },
+        text = {
+            Column {
+                Text("Enter Group Name")
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = groupName,
+                    onValueChange = { groupName = it },
+                    label = { Text("Group Name") }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onDismiss() }) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            Button(onClick = { onDismiss() }) {
+                Text("Cancel")
+            }
+        }
+    )
+
+}
+
 
 fun fetchUserProfile(userId: String, onResult: (String?, String?) -> Unit) {
     val database = Firebase.database.reference
@@ -219,7 +271,7 @@ fun fetchUserProfile(userId: String, onResult: (String?, String?) -> Unit) {
 
 
 @Composable
-fun User(username: String, profilePicUrl: String?, userId: String) {
+fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
@@ -316,17 +368,17 @@ fun User(username: String, profilePicUrl: String?, userId: String) {
             )
             Spacer(modifier = Modifier.width(6.dp))
             BasicTextField(
-                value = search,
-                onValueChange = { search = it },
-                textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 14.dp, start = 27.dp)
             )
-            if (search.isEmpty()) {
+            if (searchQuery.isEmpty()) {
                 Text(
-                    text = "Search",
+                    text = "Search Friends",
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(start = 27.dp, top = 14.dp)
                 )
@@ -427,25 +479,32 @@ data class Friend(
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
     navController: NavController,
-    currentUserId: String
+    currentUserId: String,
+    searchQuery: String
 ) {
     var sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
 
-    LaunchedEffect(friendList.toList()) {
-        val updatedList = friendList.map { (friend, details) ->
-            val chatId = if (currentUserId < friend.friendId) {
-                "${currentUserId}_${friend.friendId}"
-            } else {
-                "${friend.friendId}_${currentUserId}"
+    LaunchedEffect(friendList.toList(), searchQuery) {
+        val updatedList = friendList
+            .map { (friend, details) ->
+                val chatId = if (currentUserId < friend.friendId) {
+                    "${currentUserId}_${friend.friendId}"
+                } else {
+                    "${friend.friendId}_${currentUserId}"
+                }
+
+                val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
+                Triple(friend, details, lastMessageTimestamp)
+            }
+            .sortedByDescending { it.third }
+            .map { Pair(it.first, it.second) }
+            .filter { (_, details) ->
+                details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
             }
 
-            val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-            Triple(friend, details, lastMessageTimestamp)
-        }.sortedByDescending { it.third }
-
-        sortedFriendList = updatedList.map { Pair(it.first, it.second) }
+        sortedFriendList = updatedList
     }
 
     LazyColumn(
@@ -465,18 +524,6 @@ fun FriendsListScreen(
                 }
             )
 
-//            val dismissState = rememberSwipeToDismissBoxState(
-//                confirmValueChange = { dismissValue ->
-//                    if (dismissValue == SwipeToDismissBoxValue.StartToEnd || dismissValue == SwipeToDismissBoxValue.EndToStart) {
-//                        friendToRemove = friend
-//                        showDialog = true
-//                        false // Prevents auto-dismiss
-//                    } else {
-//                        true
-//                    }
-//                }
-//            )
-
             SwipeToDismissBox(
                 state = dismissState,
                 backgroundContent = {
@@ -491,19 +538,24 @@ fun FriendsListScreen(
 
     if (showDialog && friendToRemove != null) {
         val context = LocalContext.current
+        val usernameToRemove = friendToRemove?.let { friend ->
+            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
+        }
+
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("Remove Friend") },
-            text = { Text("Are you sure you want to remove ${friendToRemove?.let { friend -> sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend" }} as a friend?") },
+            text = { Text("Are you sure you want to remove $usernameToRemove as a friend?") },
             confirmButton = {
                 Button(
                     onClick = {
                         friendToRemove?.let { friend ->
                             removeFriendFromDatabase(currentUserId, friend.friendId)
                             sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
+
                             Toast.makeText(
                                 context,
-                                "${friendToRemove?.let { friend -> sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend" }} is no longer a friend",
+                                "$usernameToRemove is no longer a friend",
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -727,7 +779,7 @@ fun ChatScreen(navController: NavController) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars) // Keeps top bar fixed
+            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         Row(
             modifier = Modifier
@@ -735,7 +787,7 @@ fun ChatScreen(navController: NavController) {
                 .padding(16.dp)
                 .clickable {
                     val intent = Intent(context, ProfileActivity::class.java).apply {
-                        putExtra("friendId", receiverUserId) // Pass only the userId
+                        putExtra("friendId", receiverUserId)
                     }
                     context.startActivity(intent)
                 },
@@ -772,11 +824,9 @@ fun ChatScreen(navController: NavController) {
                 }
             }
         }
-
-        // **Chat Messages List**
         Box(
             modifier = Modifier
-                .weight(1f) // Makes it fill remaining space
+                .weight(1f)
                 .fillMaxWidth()
         ) {
             LazyColumn(
@@ -790,8 +840,8 @@ fun ChatScreen(navController: NavController) {
                         currentUserId = currentUserId,
                         onReply = { replyingTo = it },
                         onEdit ={ messageToEdit ->
-                            messageText = messageToEdit.text // Pre-fill the input field with the message's text
-                            editingMessageId = messageToEdit.id // Store the message ID being edited
+                            messageText = messageToEdit.text
+                            editingMessageId = messageToEdit.id
                         },
                         onDeleteForSelf = { msg ->
                             val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
