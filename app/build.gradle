@@ -2,6 +2,8 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'com.google.gms.google-services'
+    id("kotlin-kapt")
+
 }
 
 android {
@@ -75,7 +77,8 @@ dependencies {
     implementation 'com.google.firebase:firebase-storage:21.0.0'
     implementation "androidx.navigation:navigation-compose:2.7.7"
     implementation 'com.google.android.gms:play-services-auth:20.6.0'  // Google Sign-In SDK
-
-
+    implementation("androidx.room:room-runtime:2.6.1") // Latest stable version
+    kapt("androidx.room:room-compiler:2.6.1") // For annotation processing
+    implementation("androidx.room:room-ktx:2.6.1") // For Kotlin extensions
 
 }

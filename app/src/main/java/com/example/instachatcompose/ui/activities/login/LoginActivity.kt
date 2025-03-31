@@ -54,8 +54,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.room.Room
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.SecureStorage
+import com.example.instachatcompose.ui.activities.data.UserEntity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.signup.CustomCheckbox
 import com.example.instachatcompose.ui.activities.signup.SignUpActivity
@@ -66,6 +69,9 @@ import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 @Suppress("DEPRECATION")
@@ -404,6 +410,7 @@ fun performLogin(
     password: String,
     onSuccess: (String, Uri?) -> Unit,
 ) {
+
     if (email.isEmpty() || password.isEmpty()) {
         Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
         return
@@ -423,6 +430,7 @@ fun performLogin(
                 }
 
 
+
                 Toast.makeText(context, "Successfully logged in", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Authentication failed.", Toast.LENGTH_SHORT).show()
@@ -440,6 +448,8 @@ fun fetchUserProfile(
 ) {
     val database = FirebaseDatabase.getInstance().reference
     val userRef = database.child("users").child(userId)
+//    val context= LocalContext.current
+
 
     userRef.get().addOnCompleteListener { task ->
         if (task.isSuccessful) {
@@ -448,8 +458,21 @@ fun fetchUserProfile(
                 val username = snapshot.child("username").getValue(String::class.java) ?: ""
                 val profileImageUriString = snapshot.child("profileImageUri").getValue(String::class.java)
                 val profileImageUri = profileImageUriString?.let { Uri.parse(it) }
+//                val db = Room.databaseBuilder(
+//                    context.applicationContext,
+//                    AppDatabase::class.java,
+//                    "instachat_db"
+//                ).build()
+//                val userDao = db.userDao()
+//
+//                // Save user details in the database
+//                CoroutineScope(Dispatchers.IO).launch {
+////                    userDao.insertUser(UserEntity(uid, username, email, profileImageUri))
+//                }
+
 
                 onSuccess(username, profileImageUri)  // Callback with data
+
             } else {
 //                onFailure(Exception("User data not found"))  // Handle no data case
             }
