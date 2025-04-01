@@ -1,6 +1,7 @@
 package com.example.instachatcompose.ui.activities.login
 
 import android.content.ContentValues.TAG
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -423,7 +424,8 @@ fun performLogin(
                 if (user != null) {
                     val userId = user.uid
 //                    onSuccess(userId)
-                    fetchUserProfile(  // Fetch user data upon successful login
+                    fetchUserProfile(
+                        context,  // Pass the required context
                         userId,
                         onSuccess,
                     )
@@ -442,13 +444,13 @@ fun performLogin(
 }
 
 fun fetchUserProfile(
+    context: Context,
     userId: String,
-    onSuccess: (String, Uri?) -> Unit,  // Success callback with username and optional URI
-//    onFailure: (Exception) -> Unit  // Failure callback for error handling
+    onSuccess: (String, Uri?) -> Unit,
+//    onFailure: (Exception) -> Unit
 ) {
     val database = FirebaseDatabase.getInstance().reference
     val userRef = database.child("users").child(userId)
-//    val context= LocalContext.current
 
 
     userRef.get().addOnCompleteListener { task ->
@@ -456,19 +458,23 @@ fun fetchUserProfile(
             val snapshot = task.result
             if (snapshot.exists()) {
                 val username = snapshot.child("username").getValue(String::class.java) ?: ""
+                val email = snapshot.child("email").getValue(String::class.java) ?: ""  // Fetch email
                 val profileImageUriString = snapshot.child("profileImageUri").getValue(String::class.java)
                 val profileImageUri = profileImageUriString?.let { Uri.parse(it) }
-//                val db = Room.databaseBuilder(
-//                    context.applicationContext,
-//                    AppDatabase::class.java,
-//                    "instachat_db"
-//                ).build()
-//                val userDao = db.userDao()
-//
-//                // Save user details in the database
-//                CoroutineScope(Dispatchers.IO).launch {
-////                    userDao.insertUser(UserEntity(uid, username, email, profileImageUri))
-//                }
+                val db = AppDatabase.getDatabase(context)
+                val userDao = db.userDao()
+
+
+                CoroutineScope(Dispatchers.IO).launch {
+                    userDao.insertUser(UserEntity(
+                        userId = userId,
+                        username = username,
+                        email = email,
+                        bio = "",  // Provide a default bio or fetch from Firebase
+                        profileImageUri = profileImageUri?.toString() ?: ""  // Convert Uri to String
+                    ))
+                }
+
 
 
                 onSuccess(username, profileImageUri)  // Callback with data
