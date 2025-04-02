@@ -458,7 +458,8 @@ fun fetchUserProfile(
             val snapshot = task.result
             if (snapshot.exists()) {
                 val username = snapshot.child("username").getValue(String::class.java) ?: ""
-                val email = snapshot.child("email").getValue(String::class.java) ?: ""  // Fetch email
+                val email = snapshot.child("email").getValue(String::class.java) ?: ""
+                val bio= snapshot.child("bio").getValue(String::class.java) ?: ""  // Fetch email
                 val profileImageUriString = snapshot.child("profileImageUri").getValue(String::class.java)
                 val profileImageUri = profileImageUriString?.let { Uri.parse(it) }
                 val db = AppDatabase.getDatabase(context)
@@ -470,13 +471,10 @@ fun fetchUserProfile(
                         userId = userId,
                         username = username,
                         email = email,
-                        bio = "",  // Provide a default bio or fetch from Firebase
+                        bio = bio,
                         profileImageUri = profileImageUri?.toString() ?: ""  // Convert Uri to String
                     ))
                 }
-
-
-
                 onSuccess(username, profileImageUri)  // Callback with data
 
             } else {

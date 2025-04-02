@@ -1,5 +1,6 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -120,8 +121,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
+import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.UserEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 
 class MessageActivity: ComponentActivity() {
@@ -154,11 +160,12 @@ fun MessagePage() {
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
     var searchQuery by remember { mutableStateOf("") }
+    val context= LocalContext.current
 
 
 
     LaunchedEffect(userId) {
-        fetchUserProfile(userId) { fetchedUsername, fetchedProfilePicUrl ->
+        fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
             profilePicUrl = fetchedProfilePicUrl
         }
@@ -276,17 +283,51 @@ fun CreateGroupBottomSheet(
 }
 
 
-fun fetchUserProfile(userId: String, onResult: (String?, String?) -> Unit) {
+fun fetchUserProfile(context: Context, userId: String, onResult: (String?, String?) -> Unit) {
     val database = Firebase.database.reference
-    database.child("users").child(userId).get()
-        .addOnSuccessListener { dataSnapshot ->
-            val username = dataSnapshot.child("username").value as? String
-            val imageUrl = dataSnapshot.child("profileImageUri").value as? String
-            onResult(username, imageUrl)
+    val userRef = database.child("users").child(userId)
+    val db = AppDatabase.getDatabase(context)
+    val userDao = db.userDao()
+
+    CoroutineScope(Dispatchers.IO).launch {
+        // Fetch from Room DB first
+        val localUser = userDao.getUserById(userId)
+
+        if (localUser != null) {
+            withContext(Dispatchers.Main) {
+                onResult(localUser.username, localUser.profileImageUri)
+            }
         }
-        .addOnFailureListener {
-            onResult(null, null)
-        }
+
+        // Fetch from Firebase for fresh data
+        userRef.get()
+            .addOnSuccessListener { dataSnapshot ->
+                val username = dataSnapshot.child("username").getValue(String::class.java)
+                val imageUrl = dataSnapshot.child("profileImageUri").getValue(String::class.java)
+
+                if (username != null || imageUrl != null) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        userDao.insertUser(
+                            UserEntity(
+                                userId = userId,
+                                username = username ?: "",
+                                email = "",  // Not fetched here
+                                bio = "",    // Not fetched here
+                                profileImageUri = imageUrl ?: ""
+                            )
+                        )
+                        withContext(Dispatchers.Main) {
+                            onResult(username, imageUrl)
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener {
+                if (localUser == null) {
+                    onResult(null, null)  // If Room is also empty, return null
+                }
+            }
+    }
 }
 
 

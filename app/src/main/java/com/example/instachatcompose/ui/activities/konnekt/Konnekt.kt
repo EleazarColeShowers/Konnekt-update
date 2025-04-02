@@ -172,7 +172,7 @@ fun UserAddFriends() {
 
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     LaunchedEffect(userId) {
-        fetchUserProfile(userId) { fetchedUsername, fetchedProfilePicUrl ->
+        fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
             profilePicUrl = fetchedProfilePicUrl
         }
