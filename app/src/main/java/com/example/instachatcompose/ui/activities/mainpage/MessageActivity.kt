@@ -122,6 +122,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.FriendDao
+import com.example.instachatcompose.ui.activities.data.FriendEntity
 import com.example.instachatcompose.ui.activities.data.UserEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -543,30 +545,68 @@ fun FriendsListScreen(
     currentUserId: String,
     searchQuery: String
 ) {
+    val context= LocalContext.current
     var sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
+    val db = AppDatabase.getDatabase(context)
+    val userDao = db.userDao()
+    val friendDao = db.friendDao()
+
 
     LaunchedEffect(friendList.toList(), searchQuery) {
-        val updatedList = friendList
-            .map { (friend, details) ->
-                val chatId = if (currentUserId < friend.friendId) {
-                    "${currentUserId}_${friend.friendId}"
-                } else {
-                    "${friend.friendId}_${currentUserId}"
-                }
+        val updatedList = withContext(Dispatchers.IO) {
+            friendList
+                .map { (friend, details) ->
+                    val chatId = if (currentUserId < friend.friendId) {
+                        "${currentUserId}_${friend.friendId}"
+                    } else {
+                        "${friend.friendId}_${currentUserId}"
+                    }
 
-                val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-                Triple(friend, details, lastMessageTimestamp)
-            }
-            .sortedByDescending { it.third }
-            .map { Pair(it.first, it.second) }
-            .filter { (_, details) ->
-                details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
-            }
+                    val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
+                    Triple(friend, details, lastMessageTimestamp)
+                }
+                .sortedByDescending { it.third }
+                .map {
+                    val friend = it.first
+                    val details = it.second
+                    val timestamp = it.third
+
+                    val friendAsUser = UserEntity(
+                        userId = friend.friendId,
+                        username = details["username"] ?: "",
+                        email = "",
+                        bio = "",
+                        profileImageUri = details["profileImageUri"] ?: ""
+                    )
+
+                    // Check if user exists to avoid duplicate inserts
+                    if (userDao.getUserById(friend.friendId) == null) {
+                        userDao.insertUser(friendAsUser)
+                    }
+
+                    friendDao.insertFriends(
+                        listOf(
+                            FriendEntity(
+                                friendId = friend.friendId,
+                                username = details["username"] ?: "",
+                                profileImageUri = details["profileImageUri"] ?: "",
+                                timestamp = timestamp
+                            )
+                        )
+                    )
+
+                    Pair(friend, details)
+                }
+                .filter { (_, details) ->
+                    details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
+                }
+        }
 
         sortedFriendList = updatedList
     }
+
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
@@ -611,7 +651,7 @@ fun FriendsListScreen(
                 Button(
                     onClick = {
                         friendToRemove?.let { friend ->
-                            removeFriendFromDatabase(currentUserId, friend.friendId)
+                            removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
                             sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
 
                             Toast.makeText(
@@ -741,7 +781,7 @@ fun FriendRow(
     }
 }
 
-fun removeFriendFromDatabase(currentUserId: String, friendId: String) {
+fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: FriendDao) {
     val db = Firebase.database.reference
 
     db.child("users").child(currentUserId).child("friends")
@@ -771,6 +811,10 @@ fun removeFriendFromDatabase(currentUserId: String, friendId: String) {
                 Log.e("Firebase", "Error removing friend: ${error.message}")
             }
         })
+    CoroutineScope(Dispatchers.IO).launch {
+        friendDao.deleteFriend(friendId)
+    }
+
 }
 
 @Composable
