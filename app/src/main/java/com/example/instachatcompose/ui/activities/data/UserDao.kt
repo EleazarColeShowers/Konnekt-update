@@ -16,17 +16,18 @@ interface UserDao {
 
 @Dao
 interface FriendDao {
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertFriend(friend: kotlin.collections.List<com.example.instachatcompose.ui.activities.data.FriendEntity>)
+    suspend fun insertFriend(friend: FriendEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFriends(friends: List<FriendEntity>)
 
-    @Query("SELECT * FROM friends")
-    suspend fun getAllFriends(): List<FriendEntity>
+    @Query("SELECT * FROM friends WHERE userId = :userId")
+    suspend fun getFriendsForUser(userId: String): List<FriendEntity>
 
-    @Query("DELETE FROM friends WHERE friendId = :friendId")
-    suspend fun deleteFriend(friendId: String)
+    @Query("DELETE FROM friends WHERE friendId = :friendId AND userId = :userId")
+    suspend fun deleteFriend(friendId: String, userId: String)
 }
 
 @Dao

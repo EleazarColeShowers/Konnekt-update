@@ -19,12 +19,13 @@ data class UserEntity(
     foreignKeys = [ForeignKey(
         entity = UserEntity::class,
         parentColumns = ["userId"],
-        childColumns = ["friendId"],
+        childColumns = ["userId"],
         onDelete = CASCADE
     )]
 )
 data class FriendEntity(
-    @PrimaryKey val friendId: String,
+    @PrimaryKey val friendId: String, // The ID of the friend
+    val userId: String, // The owner of this friend record
     val username: String,
     val profileImageUri: String,
     val timestamp: Long

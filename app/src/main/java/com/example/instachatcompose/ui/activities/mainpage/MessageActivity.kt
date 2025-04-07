@@ -48,8 +48,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DismissDirection
-import androidx.compose.material3.DismissValue
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -592,7 +590,8 @@ fun FriendsListScreen(
                                 friendId = friend.friendId,
                                 username = details["username"] ?: "",
                                 profileImageUri = details["profileImageUri"] ?: "",
-                                timestamp = timestamp
+                                timestamp = timestamp,
+                                userId = currentUserId
                             )
                         )
                     )
@@ -638,7 +637,6 @@ fun FriendsListScreen(
     }
 
     if (showDialog && friendToRemove != null) {
-        val context = LocalContext.current
         val usernameToRemove = friendToRemove?.let { friend ->
             sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
         }
@@ -695,7 +693,6 @@ fun FriendRow(
     var lastMessage by remember { mutableStateOf("Loading...") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
 
-    // Real-time Firebase listener
     DisposableEffect(chatId) {
         val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
 
@@ -812,7 +809,7 @@ fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: 
             }
         })
     CoroutineScope(Dispatchers.IO).launch {
-        friendDao.deleteFriend(friendId)
+        friendDao.deleteFriend(friendId, currentUserId)
     }
 
 }

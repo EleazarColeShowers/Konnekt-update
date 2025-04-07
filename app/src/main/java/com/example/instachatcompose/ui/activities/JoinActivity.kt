@@ -39,7 +39,6 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.login.LoginActivity
-import com.example.instachatcompose.ui.activities.login.LoginPage
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.signup.SignUpActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
