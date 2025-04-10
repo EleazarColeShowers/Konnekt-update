@@ -2,6 +2,8 @@ package com.example.instachatcompose.ui.activities.mainpage
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -48,6 +50,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -230,18 +234,20 @@ fun MessagePage() {
         }
     }
     if (showCreateGroupDialog) {
-        CreateGroupBottomSheet(onDismiss = { showCreateGroupDialog = false })
+        CreateGroupBottomSheet(onDismiss = { showCreateGroupDialog = false }, friendList = friendList)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupBottomSheet(
+    friendList: List<Pair<Friend, Map<String, String>>>,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
     var groupName by remember { mutableStateOf("") }
+    val selectedFriends = remember { mutableStateListOf<String>() } // Store selected friendIds
 
     ModalBottomSheet(
         onDismissRequest = { onDismiss() },
@@ -256,11 +262,74 @@ fun CreateGroupBottomSheet(
         ) {
             Text("New Group", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
+
             OutlinedTextField(
                 value = groupName,
                 onValueChange = { groupName = it },
-                label = { Text("Group Name") }
+                label = { Text("Group Name") },
+                modifier = Modifier.fillMaxWidth()
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Add Friends", fontWeight = FontWeight.SemiBold)
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(friendList, key = { it.first.friendId }) { (friend, details) ->
+                    val friendId = friend.friendId
+                    val username = details["username"] ?: "Unknown"
+                    val profileImage = details["profileImageUri"] ?: ""
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (profileImage.isNotEmpty()) {
+                            AsyncImage(
+                                model = profileImage,
+                                contentDescription = "Profile Image",
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Gray)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = username,
+                            modifier = Modifier.weight(1f),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Checkbox(
+                            checked = selectedFriends.contains(friendId),
+                            onCheckedChange = {
+                                if (it) selectedFriends.add(friendId)
+                                else selectedFriends.remove(friendId)
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.primary,
+                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -273,6 +342,9 @@ fun CreateGroupBottomSheet(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
+                    // You can access groupName and selectedFriends here
+                    println("Group Name: $groupName")
+                    println("Selected Friend IDs: $selectedFriends")
                     scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
                 }) {
                     Text("Create")
@@ -281,6 +353,7 @@ fun CreateGroupBottomSheet(
         }
     }
 }
+
 
 
 fun fetchUserProfile(context: Context, userId: String, onResult: (String?, String?) -> Unit) {
@@ -551,11 +624,20 @@ fun FriendsListScreen(
     val userDao = db.userDao()
     val friendDao = db.friendDao()
 
-
-    LaunchedEffect(friendList.toList(), searchQuery) {
+    LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
-            friendList
-                .map { (friend, details) ->
+            val isOnline = try {
+                val socket = java.net.Socket()
+                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
+                socket.close()
+                true
+            } catch (e: Exception) {
+                false
+            }
+
+            val friendEntities = if (isOnline && friendList.isNotEmpty()) {
+                // Fetch from Firebase
+                val firebaseList = friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId) {
                         "${currentUserId}_${friend.friendId}"
                     } else {
@@ -563,14 +645,8 @@ fun FriendsListScreen(
                     }
 
                     val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-                    Triple(friend, details, lastMessageTimestamp)
-                }
-                .sortedByDescending { it.third }
-                .map {
-                    val friend = it.first
-                    val details = it.second
-                    val timestamp = it.third
 
+                    // Update User table
                     val friendAsUser = UserEntity(
                         userId = friend.friendId,
                         username = details["username"] ?: "",
@@ -578,31 +654,42 @@ fun FriendsListScreen(
                         bio = "",
                         profileImageUri = details["profileImageUri"] ?: ""
                     )
-
-                    // Check if user exists to avoid duplicate inserts
                     if (userDao.getUserById(friend.friendId) == null) {
                         userDao.insertUser(friendAsUser)
                     }
 
-                    friendDao.insertFriends(
-                        listOf(
-                            FriendEntity(
-                                friendId = friend.friendId,
-                                username = details["username"] ?: "",
-                                profileImageUri = details["profileImageUri"] ?: "",
-                                timestamp = timestamp,
-                                userId = currentUserId
-                            )
-                        )
+                    // Update Friend table
+                    val friendEntity = FriendEntity(
+                        friendId = friend.friendId,
+                        username = details["username"] ?: "",
+                        profileImageUri = details["profileImageUri"] ?: "",
+                        timestamp = lastMessageTimestamp,
+                        userId = currentUserId
                     )
+                    friendDao.insertFriends(listOf(friendEntity))
 
-                    Pair(friend, details)
+                    Triple(friend, details, lastMessageTimestamp)
                 }
+                firebaseList
+            } else {
+                // Fetch from local Room DB
+                friendDao.getFriendsForUser(currentUserId).map { entity ->
+                    val friend = Friend(friendId = entity.friendId)
+                    val details = mapOf(
+                        "username" to entity.username,
+                        "profileImageUri" to entity.profileImageUri
+                    )
+                    Triple(friend, details, entity.timestamp)
+                }
+            }
+
+            friendEntities
+                .sortedByDescending { it.third }
+                .map { Pair(it.first, it.second) }
                 .filter { (_, details) ->
                     details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
                 }
         }
-
         sortedFriendList = updatedList
     }
 
@@ -813,6 +900,14 @@ fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: 
     }
 
 }
+
+fun isOnline(context: Context): Boolean {
+    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = connectivityManager.activeNetwork
+    val capabilities = connectivityManager.getNetworkCapabilities(network)
+    return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+}
+
 
 @Composable
 fun ChatScreen(navController: NavController) {

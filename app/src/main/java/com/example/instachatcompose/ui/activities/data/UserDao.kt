@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UserDao {
@@ -18,13 +19,19 @@ interface UserDao {
 interface FriendDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertFriend(friend: FriendEntity)
+     fun insertFriend(friend: FriendEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFriends(friends: List<FriendEntity>)
 
     @Query("SELECT * FROM friends WHERE userId = :userId")
     suspend fun getFriendsForUser(userId: String): List<FriendEntity>
+
+    @Query("SELECT * FROM friends WHERE userId = :userId AND friendId = :friendId LIMIT 1")
+    suspend fun getFriendByUserAndFriendId(userId: String, friendId: String): FriendEntity?
+
+    @Query("SELECT * FROM friends WHERE userId = :currentUserId")
+    fun observeFriendsForUser(currentUserId: String): Flow<List<FriendEntity>>
 
     @Query("DELETE FROM friends WHERE friendId = :friendId AND userId = :userId")
     suspend fun deleteFriend(friendId: String, userId: String)

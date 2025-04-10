@@ -62,9 +62,6 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
 
 
-                // Step 2: Optional - Copy old data to the new table if needed (assumes all entries belong to a single default user)
-                // If no userId exists yet, this step can be omitted or you can set a default userId manually.
-                // Example below assumes 'default_user' if you want to preserve old entries:
                 database.execSQL("""
                     INSERT INTO friends_new (friendId, userId, username, profileImageUri, timestamp)
                     SELECT friendId, 'default_user', username, profileImageUri, timestamp FROM friends
