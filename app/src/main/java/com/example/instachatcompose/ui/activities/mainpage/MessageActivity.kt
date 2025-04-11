@@ -9,7 +9,9 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -123,10 +125,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
+import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.FriendDao
 import com.example.instachatcompose.ui.activities.data.FriendEntity
 import com.example.instachatcompose.ui.activities.data.UserEntity
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -244,10 +248,45 @@ fun CreateGroupBottomSheet(
     friendList: List<Pair<Friend, Map<String, String>>>,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
     var groupName by remember { mutableStateOf("") }
-    val selectedFriends = remember { mutableStateListOf<String>() } // Store selected friendIds
+    val selectedFriends = remember { mutableStateListOf<String>() }
+
+    var shouldPickImage by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { imageUri ->
+            val groupId = TempGroupIdHolder.groupId
+            val storageRef = FirebaseStorage.getInstance().reference
+                .child("group_images/$groupId/group_image.jpg")
+
+            storageRef.putFile(imageUri)
+                .continueWithTask { task ->
+                    if (!task.isSuccessful) throw task.exception ?: Exception("Upload failed")
+                    storageRef.downloadUrl
+                }
+                .addOnSuccessListener { downloadUri ->
+                    FirebaseDatabase.getInstance().getReference("chats")
+                        .child(groupId)
+                        .child("groupImage")
+                        .setValue(downloadUri.toString())
+                }
+                .addOnFailureListener {
+                    Toast.makeText(context, "Failed to upload group image", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    LaunchedEffect(shouldPickImage) {
+        if (shouldPickImage) {
+            shouldPickImage = false
+            launcher.launch("image/*")
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = { onDismiss() },
@@ -342,10 +381,37 @@ fun CreateGroupBottomSheet(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
-                    // You can access groupName and selectedFriends here
-                    println("Group Name: $groupName")
-                    println("Selected Friend IDs: $selectedFriends")
-                    scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+                    if (groupName.isNotBlank() && currentUserId != null) {
+                        val groupId = "group_${UUID.randomUUID()}"
+                        TempGroupIdHolder.groupId = groupId
+
+                        val members = selectedFriends.toMutableList()
+                        if (!members.contains(currentUserId)) {
+                            members.add(currentUserId)
+                        }
+
+                        val memberMap = members.associateWith { true }
+
+                        val groupData = mapOf(
+                            "groupName" to groupName,
+                            "members" to memberMap
+                        )
+
+                        FirebaseDatabase.getInstance().getReference("chats")
+                            .child(groupId)
+                            .setValue(groupData)
+                            .addOnSuccessListener {
+                                shouldPickImage = true
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
+                            }
+
+                        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                    } else {
+                        Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
+                    }
                 }) {
                     Text("Create")
                 }
@@ -354,7 +420,9 @@ fun CreateGroupBottomSheet(
     }
 }
 
-
+object TempGroupIdHolder {
+    var groupId: String = " "
+}
 
 fun fetchUserProfile(context: Context, userId: String, onResult: (String?, String?) -> Unit) {
     val database = Firebase.database.reference
@@ -363,7 +431,6 @@ fun fetchUserProfile(context: Context, userId: String, onResult: (String?, Strin
     val userDao = db.userDao()
 
     CoroutineScope(Dispatchers.IO).launch {
-        // Fetch from Room DB first
         val localUser = userDao.getUserById(userId)
 
         if (localUser != null) {
@@ -372,7 +439,6 @@ fun fetchUserProfile(context: Context, userId: String, onResult: (String?, Strin
             }
         }
 
-        // Fetch from Firebase for fresh data
         userRef.get()
             .addOnSuccessListener { dataSnapshot ->
                 val username = dataSnapshot.child("username").getValue(String::class.java)
