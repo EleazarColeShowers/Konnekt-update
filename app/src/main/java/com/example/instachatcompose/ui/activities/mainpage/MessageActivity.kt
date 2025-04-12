@@ -136,6 +136,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 
 class MessageActivity: ComponentActivity() {
@@ -262,7 +264,9 @@ fun CreateGroupBottomSheet(
         uri?.let { imageUri ->
             val groupId = TempGroupIdHolder.groupId
             val storageRef = FirebaseStorage.getInstance().reference
-                .child("group_images/$groupId/group_image.jpg")
+                .child("profile_images/$groupId/profile_image.jpg")
+
+//            val storageRef = FirebaseStorage.getInstance().reference.child("test_folder/test_image.jpg")
 
             storageRef.putFile(imageUri)
                 .continueWithTask { task ->
@@ -674,12 +678,72 @@ data class Friend(
     val timestamp: Long = 0L
 )
 
+data class GroupChat(
+    val groupId: String,
+    val groupName: String,
+    val members: List<String>,
+    val groupImageUrl: String = ""
+)
+
+suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
+    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
+
+    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
+        override fun onDataChange(snapshot: DataSnapshot) {
+            val groupChats = mutableListOf<GroupChat>()
+            for (groupSnapshot in snapshot.children) {
+                val key = groupSnapshot.key ?: continue
+                if (!key.startsWith("group_")) continue
+
+                val membersSnapshot = groupSnapshot.child("members")
+                val members = membersSnapshot.children.mapNotNull { it.key }
+
+                if (currentUserId in members) {
+                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
+                    val groupId = key.removePrefix("group_")
+
+                    val groupChat = GroupChat(
+                        groupId = groupId,
+                        groupName = groupName,
+                        members = members
+                    )
+
+                    groupChats.add(groupChat)
+                }
+            }
+            cont.resume(groupChats)
+        }
+
+        override fun onCancelled(error: DatabaseError) {
+            cont.resume(emptyList())
+        }
+    })
+}
+
+suspend fun fetchGroupImageUrl(groupId: String): String = suspendCoroutine { cont ->
+    val storageRef = FirebaseStorage.getInstance().reference
+        .child("groupImages/$groupId.jpg")
+
+    storageRef.downloadUrl
+        .addOnSuccessListener { cont.resume(it.toString()) }
+        .addOnFailureListener { cont.resume("") }
+}
+
+suspend fun getGroupChatsWithImages(currentUserId: String): List<GroupChat> {
+    val rawGroups = fetchGroupChats(currentUserId)
+    return rawGroups.map { group ->
+        val imageUrl = fetchGroupImageUrl(group.groupId)
+        group.copy(groupImageUrl = imageUrl)
+    }
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
     navController: NavController,
-    currentUserId: String,
+    currentUserId: String, 
     searchQuery: String
 ) {
     val context= LocalContext.current
@@ -689,6 +753,16 @@ fun FriendsListScreen(
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
+
+    val groupChats = remember { mutableStateListOf<GroupChat>() }
+
+    LaunchedEffect(Unit) {
+        val groups = getGroupChatsWithImages(currentUserId)
+        Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
+        groupChats.clear()
+        groupChats.addAll(groups)
+    }
+
 
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
@@ -759,35 +833,83 @@ fun FriendsListScreen(
         sortedFriendList = updatedList
     }
 
+    val combinedList by remember {
+        derivedStateOf {
+            val groupItems = groupChats.map { ChatItem.GroupItem(it) }
+            val friendItems = sortedFriendList.map { ChatItem.FriendItem(it.first, it.second) }
+            groupItems + friendItems
+        }
+    }
+
+
+
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(sortedFriendList, key = { it.first.friendId }) { (friend, details) ->
-            val dismissState = rememberSwipeToDismissBoxState(
-                confirmValueChange = {
-                    if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-                        friendToRemove = friend
-                        showDialog = true
-                        false // Prevents auto-dismiss
-                    } else {
-                        true
-                    }
-                }
-            )
+        items(combinedList) { item ->
+            when (item) {
+                is ChatItem.FriendItem -> {
+                    val friend = item.friend
+                    val details = item.details
 
-            SwipeToDismissBox(
-                state = dismissState,
-                backgroundContent = {
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+                                friendToRemove = friend
+                                showDialog = true
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                    )
 
-                },
-                content = {
-                    FriendRow(friend, details, navController, currentUserId)
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = { /* your swipe background */ },
+                        content = {
+                            FriendRow(friend, details, navController, currentUserId)
+                        }
+                    )
                 }
-            )
+
+                is ChatItem.GroupItem -> {
+                    GroupAsFriendRow(group = item.group, navController = navController, currentUserId = currentUserId)
+                }
+            }
         }
     }
+
+//    LazyColumn(
+//        modifier = Modifier.fillMaxWidth(),
+//        verticalArrangement = Arrangement.spacedBy(8.dp)
+//    ) {
+//        items(sortedFriendList, key = { it.first.friendId }) { (friend, details) ->
+//            val dismissState = rememberSwipeToDismissBoxState(
+//                confirmValueChange = {
+//                    if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+//                        friendToRemove = friend
+//                        showDialog = true
+//                        false // Prevents auto-dismiss
+//                    } else {
+//                        true
+//                    }
+//                }
+//            )
+//
+//            SwipeToDismissBox(
+//                state = dismissState,
+//                backgroundContent = {
+//
+//                },
+//                content = {
+//                    FriendRow(friend, details, navController, currentUserId)
+//                }
+//            )
+//        }
+//    }
 
     if (showDialog && friendToRemove != null) {
         val usernameToRemove = friendToRemove?.let { friend ->
@@ -931,6 +1053,62 @@ fun FriendRow(
     }
 }
 
+@Composable
+fun GroupAsFriendRow(
+    group: GroupChat,
+    navController: NavController,
+    currentUserId: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .clickable {
+                navController.currentBackStackEntry
+                    ?.savedStateHandle
+                    ?.apply {
+                        set("groupId", group.groupId)
+                        set("groupName", group.groupName)
+                        set("groupImageUri", group.groupImageUrl ?: "")
+                        set("currentUserId", currentUserId)
+                    }
+                navController.navigate("group_chat")
+            },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!group.groupImageUrl.isNullOrEmpty()) {
+            AsyncImage(
+                model = group.groupImageUrl,
+                contentDescription = "Group Image",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.background)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Gray)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = group.groupName,
+                style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = "Group chat",
+                style = TextStyle(fontSize = 14.sp, color = Color.Gray)
+            )
+        }
+    }
+}
+
 fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: FriendDao) {
     val db = Firebase.database.reference
 
@@ -967,13 +1145,10 @@ fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: 
 
 }
 
-fun isOnline(context: Context): Boolean {
-    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val network = connectivityManager.activeNetwork
-    val capabilities = connectivityManager.getNetworkCapabilities(network)
-    return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+sealed class ChatItem {
+    data class FriendItem(val friend: Friend, val details: Map<String, String>) : ChatItem()
+    data class GroupItem(val group: GroupChat) : ChatItem()
 }
-
 
 @Composable
 fun ChatScreen(navController: NavController) {
