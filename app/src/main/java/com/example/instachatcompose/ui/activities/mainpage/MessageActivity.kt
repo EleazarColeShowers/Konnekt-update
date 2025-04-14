@@ -255,41 +255,12 @@ fun CreateGroupBottomSheet(
     val scope = rememberCoroutineScope()
     var groupName by remember { mutableStateOf("") }
     val selectedFriends = remember { mutableStateListOf<String>() }
-
-    var shouldPickImage by remember { mutableStateOf(false) }
+    var groupImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { imageUri ->
-            val groupId = TempGroupIdHolder.groupId
-            val storageRef = FirebaseStorage.getInstance().reference
-                .child("profile_images/$groupId/profile_image.jpg")
-
-//            val storageRef = FirebaseStorage.getInstance().reference.child("test_folder/test_image.jpg")
-
-            storageRef.putFile(imageUri)
-                .continueWithTask { task ->
-                    if (!task.isSuccessful) throw task.exception ?: Exception("Upload failed")
-                    storageRef.downloadUrl
-                }
-                .addOnSuccessListener { downloadUri ->
-                    FirebaseDatabase.getInstance().getReference("chats")
-                        .child(groupId)
-                        .child("groupImage")
-                        .setValue(downloadUri.toString())
-                }
-                .addOnFailureListener {
-                    Toast.makeText(context, "Failed to upload group image", Toast.LENGTH_SHORT).show()
-                }
-        }
-    }
-
-    LaunchedEffect(shouldPickImage) {
-        if (shouldPickImage) {
-            shouldPickImage = false
-            launcher.launch("image/*")
-        }
+        groupImageUri = uri
     }
 
     ModalBottomSheet(
@@ -312,6 +283,37 @@ fun CreateGroupBottomSheet(
                 label = { Text("Group Name") },
                 modifier = Modifier.fillMaxWidth()
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (groupImageUri != null) {
+                    AsyncImage(
+                        model = groupImageUri,
+                        contentDescription = "Selected Image",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.Gray)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.LightGray)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                TextButton(onClick = { launcher.launch("image/*") }) {
+                    Text("Select Image")
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
             Text("Add Friends", fontWeight = FontWeight.SemiBold)
@@ -374,6 +376,7 @@ fun CreateGroupBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
@@ -390,29 +393,54 @@ fun CreateGroupBottomSheet(
                         val groupId = "group_${UUID.randomUUID()}"
                         TempGroupIdHolder.groupId = groupId
 
-                        val members = selectedFriends.toMutableList()
-                        if (!members.contains(currentUserId)) {
-                            members.add(currentUserId)
+                        val members = selectedFriends.toMutableList().apply {
+                            if (!contains(currentUserId)) add(currentUserId)
                         }
 
-                        val memberMap = members.associateWith { true }
+                        if (groupImageUri != null) {
+                            val storageRef = FirebaseStorage.getInstance().reference
+                                .child("group_images/$groupId/profile_image.jpg")
 
-                        val groupData = mapOf(
-                            "groupName" to groupName,
-                            "members" to memberMap
-                        )
+                            storageRef.putFile(groupImageUri!!)
+                                .addOnSuccessListener {
+                                    storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
+                                        val groupData = mapOf(
+                                            "groupName" to groupName,
+                                            "members" to members.associateWith { true },
+                                            "groupImage" to downloadUrl.toString()
+                                        )
 
-                        FirebaseDatabase.getInstance().getReference("chats")
-                            .child(groupId)
-                            .setValue(groupData)
-                            .addOnSuccessListener {
-                                shouldPickImage = true
-                            }
-                            .addOnFailureListener {
-                                Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
-                            }
+                                        FirebaseDatabase.getInstance().getReference("chats")
+                                            .child(groupId)
+                                            .setValue(groupData)
+                                            .addOnSuccessListener {
+                                                Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .addOnFailureListener {
+                                                Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
+                                }
+                        } else {
+                            val groupData = mapOf(
+                                "groupName" to groupName,
+                                "members" to members.associateWith { true },
+                                "groupImage" to null
+                            )
 
-                        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                            FirebaseDatabase.getInstance().getReference("chats")
+                                .child(groupId)
+                                .setValue(groupData)
+                                .addOnSuccessListener {
+                                    Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
+                                }
+                                .addOnFailureListener {
+                                    Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
+                                }
+                        }
                     } else {
                         Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
                     }
@@ -423,6 +451,7 @@ fun CreateGroupBottomSheet(
         }
     }
 }
+
 
 object TempGroupIdHolder {
     var groupId: String = " "
@@ -682,7 +711,7 @@ data class GroupChat(
     val groupId: String,
     val groupName: String,
     val members: List<String>,
-    val groupImageUrl: String = ""
+    val groupImage: String = ""
 )
 
 suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
@@ -701,11 +730,14 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
                 if (currentUserId in members) {
                     val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
                     val groupId = key.removePrefix("group_")
+                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
+
 
                     val groupChat = GroupChat(
                         groupId = groupId,
                         groupName = groupName,
-                        members = members
+                        members = members,
+                        groupImage= groupImage
                     )
 
                     groupChats.add(groupChat)
@@ -720,23 +752,23 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
     })
 }
 
-suspend fun fetchGroupImageUrl(groupId: String): String = suspendCoroutine { cont ->
-    val storageRef = FirebaseStorage.getInstance().reference
-        .child("groupImages/$groupId.jpg")
-
-    storageRef.downloadUrl
-        .addOnSuccessListener { cont.resume(it.toString()) }
-        .addOnFailureListener { cont.resume("") }
-}
-
-suspend fun getGroupChatsWithImages(currentUserId: String): List<GroupChat> {
-    val rawGroups = fetchGroupChats(currentUserId)
-    return rawGroups.map { group ->
-        val imageUrl = fetchGroupImageUrl(group.groupId)
-        group.copy(groupImageUrl = imageUrl)
-    }
-}
-
+//suspend fun fetchGroupImageUrl(groupId: String): String = suspendCoroutine { cont ->
+//    val storageRef = FirebaseStorage.getInstance().reference
+//        .child("groupImages/$groupId.jpg")
+//
+//    storageRef.downloadUrl
+//        .addOnSuccessListener { cont.resume(it.toString()) }
+//        .addOnFailureListener { cont.resume("") }
+//}
+//
+//suspend fun getGroupChatsWithImages(currentUserId: String): List<GroupChat> {
+//    val rawGroups = fetchGroupChats(currentUserId)
+//    return rawGroups.map { group ->
+//        val imageUrl = fetchGroupImageUrl(group.groupId)
+//        group.copy(groupImageUrl = imageUrl)
+//    }
+//}
+//
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -757,7 +789,7 @@ fun FriendsListScreen(
     val groupChats = remember { mutableStateListOf<GroupChat>() }
 
     LaunchedEffect(Unit) {
-        val groups = getGroupChatsWithImages(currentUserId)
+        val groups = fetchGroupChats(currentUserId)
         Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
         groupChats.clear()
         groupChats.addAll(groups)
@@ -881,35 +913,6 @@ fun FriendsListScreen(
             }
         }
     }
-
-//    LazyColumn(
-//        modifier = Modifier.fillMaxWidth(),
-//        verticalArrangement = Arrangement.spacedBy(8.dp)
-//    ) {
-//        items(sortedFriendList, key = { it.first.friendId }) { (friend, details) ->
-//            val dismissState = rememberSwipeToDismissBoxState(
-//                confirmValueChange = {
-//                    if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-//                        friendToRemove = friend
-//                        showDialog = true
-//                        false // Prevents auto-dismiss
-//                    } else {
-//                        true
-//                    }
-//                }
-//            )
-//
-//            SwipeToDismissBox(
-//                state = dismissState,
-//                backgroundContent = {
-//
-//                },
-//                content = {
-//                    FriendRow(friend, details, navController, currentUserId)
-//                }
-//            )
-//        }
-//    }
 
     if (showDialog && friendToRemove != null) {
         val usernameToRemove = friendToRemove?.let { friend ->
@@ -1069,16 +1072,16 @@ fun GroupAsFriendRow(
                     ?.apply {
                         set("groupId", group.groupId)
                         set("groupName", group.groupName)
-                        set("groupImageUri", group.groupImageUrl ?: "")
+                        set("groupImageUri", group.groupImage ?: "")
                         set("currentUserId", currentUserId)
                     }
                 navController.navigate("group_chat")
             },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!group.groupImageUrl.isNullOrEmpty()) {
+        if (group.groupImage.isNotEmpty()) {
             AsyncImage(
-                model = group.groupImageUrl,
+                model = group.groupImage,
                 contentDescription = "Group Image",
                 modifier = Modifier
                     .size(40.dp)
