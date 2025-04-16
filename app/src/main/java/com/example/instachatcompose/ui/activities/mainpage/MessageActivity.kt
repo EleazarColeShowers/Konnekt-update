@@ -444,6 +444,8 @@ fun CreateGroupBottomSheet(
                     } else {
                         Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
                     }
+                    scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+
                 }) {
                     Text("Create")
                 }
@@ -496,7 +498,7 @@ fun fetchUserProfile(context: Context, userId: String, onResult: (String?, Strin
             }
             .addOnFailureListener {
                 if (localUser == null) {
-                    onResult(null, null)  // If Room is also empty, return null
+                    onResult(null, null)
                 }
             }
     }
@@ -509,9 +511,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
     val requestCount = fetchReceivedRequestsCount(userId).value
-
     var search by remember { mutableStateOf("") }
-
     Column {
         Row(
             modifier = Modifier
@@ -647,13 +647,11 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
 @Composable
 fun fetchReceivedRequestsCount(userId: String): State<Int> {
     val requestCount = remember { mutableStateOf(0) }
-
     LaunchedEffect(userId) {
         loadReceivedRequestsWithDetails(userId) { receivedRequests ->
             requestCount.value = receivedRequests.size
         }
     }
-
     return requestCount
 }
 
@@ -752,24 +750,6 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
     })
 }
 
-//suspend fun fetchGroupImageUrl(groupId: String): String = suspendCoroutine { cont ->
-//    val storageRef = FirebaseStorage.getInstance().reference
-//        .child("groupImages/$groupId.jpg")
-//
-//    storageRef.downloadUrl
-//        .addOnSuccessListener { cont.resume(it.toString()) }
-//        .addOnFailureListener { cont.resume("") }
-//}
-//
-//suspend fun getGroupChatsWithImages(currentUserId: String): List<GroupChat> {
-//    val rawGroups = fetchGroupChats(currentUserId)
-//    return rawGroups.map { group ->
-//        val imageUrl = fetchGroupImageUrl(group.groupId)
-//        group.copy(groupImageUrl = imageUrl)
-//    }
-//}
-//
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsListScreen(
@@ -792,9 +772,9 @@ fun FriendsListScreen(
         val groups = fetchGroupChats(currentUserId)
         Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
         groupChats.clear()
-        groupChats.addAll(groups)
-    }
+        groupChats.addAll(groups.asReversed())
 
+    }
 
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
@@ -808,7 +788,6 @@ fun FriendsListScreen(
             }
 
             val friendEntities = if (isOnline && friendList.isNotEmpty()) {
-                // Fetch from Firebase
                 val firebaseList = friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId) {
                         "${currentUserId}_${friend.friendId}"
@@ -1075,7 +1054,7 @@ fun GroupAsFriendRow(
                         set("groupImageUri", group.groupImage ?: "")
                         set("currentUserId", currentUserId)
                     }
-                navController.navigate("group_chat")
+                navController.navigate("chat")
             },
         verticalAlignment = Alignment.CenterVertically
     ) {
