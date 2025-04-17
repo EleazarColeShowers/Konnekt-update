@@ -1053,6 +1053,9 @@ fun GroupAsFriendRow(
                         set("groupName", group.groupName)
                         set("groupImageUri", group.groupImage ?: "")
                         set("currentUserId", currentUserId)
+                        set("chatId", group.groupId)
+                        set("isGroupChat", true)
+
                     }
                 navController.navigate("chat")
             },
@@ -1135,11 +1138,22 @@ sealed class ChatItem {
 @Composable
 fun ChatScreen(navController: NavController) {
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
-    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
+//    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
+    val username= if (isGroupChat) {
+        savedStateHandle?.get<String>("groupName") ?: "Group Chat"
+    } else {
+        savedStateHandle?.get<String>("username") ?: "Unknown"
+    }
+//    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    val profileImageUri = if (isGroupChat) {
+        savedStateHandle?.get<String>("groupImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    } else {
+        savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
+    }
     val chatId = savedStateHandle?.get<String>("chatId") ?: ""
     val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
-    val receiverUserId = savedStateHandle?.get<String>("friendId") ?: ""
+    val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
@@ -1150,6 +1164,7 @@ fun ChatScreen(navController: NavController) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+
 
 
     LaunchedEffect(chatId, isChatOpen) {
