@@ -1145,7 +1145,6 @@ fun ChatScreen(navController: NavController) {
     } else {
         savedStateHandle?.get<String>("username") ?: "Unknown"
     }
-//    val profileImageUri = savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
     val profileImageUri = if (isGroupChat) {
         savedStateHandle?.get<String>("groupImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
     } else {
@@ -1202,7 +1201,11 @@ fun ChatScreen(navController: NavController) {
     LaunchedEffect(chatId) {
         typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                isFriendTyping = snapshot.getValue(Boolean::class.java) ?: false
+                val value = snapshot.value
+                isFriendTyping = when (value) {
+                    is Boolean -> value
+                    else -> false
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -1210,6 +1213,7 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
+
 
     Column(
         modifier = Modifier
