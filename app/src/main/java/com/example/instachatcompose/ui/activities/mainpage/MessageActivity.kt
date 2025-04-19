@@ -139,7 +139,6 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -162,7 +161,6 @@ class MessageActivity: ComponentActivity() {
 fun MessagePage() {
     val activity = LocalContext.current as? ComponentActivity
     val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
-
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
     val currentUser = FirebaseAuth.getInstance().currentUser
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -171,8 +169,6 @@ fun MessagePage() {
     var username by remember { mutableStateOf("Loading...") }
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
-
-
 
     LaunchedEffect(userId) {
         fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -246,10 +242,7 @@ fun MessagePage() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateGroupBottomSheet(
-    friendList: List<Pair<Friend, Map<String, String>>>,
-    onDismiss: () -> Unit
-) {
+fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
@@ -454,7 +447,6 @@ fun CreateGroupBottomSheet(
     }
 }
 
-
 object TempGroupIdHolder {
     var groupId: String = " "
 }
@@ -503,7 +495,6 @@ fun fetchUserProfile(context: Context, userId: String, onResult: (String?, Strin
             }
     }
 }
-
 
 @Composable
 fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit) {
@@ -657,7 +648,6 @@ fun fetchReceivedRequestsCount(userId: String): State<Int> {
 
 @Composable
 fun MessageFrag(username: String, navController: NavController){
-
     val messageConnected= painterResource(id = R.drawable.messagechats)
 
     Column(
@@ -930,7 +920,6 @@ fun FriendsListScreen(
     }
 }
 
-
 @Composable
 fun FriendRow(
     friend: Friend,
@@ -1139,7 +1128,6 @@ sealed class ChatItem {
 fun ChatScreen(navController: NavController) {
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
     val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
-//    val username = savedStateHandle?.get<String>("username") ?: "Unknown"
     val username= if (isGroupChat) {
         savedStateHandle?.get<String>("groupName") ?: "Group Chat"
     } else {
@@ -1315,7 +1303,6 @@ fun ChatScreen(navController: NavController) {
                 .padding(8.dp)
                 .imePadding()
         ) {
-            // **Replying to Preview**
             replyingTo?.let { message ->
                 val senderName = if (message.senderId == currentUserId) "You" else username // Assuming friendName is passed
                 val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
