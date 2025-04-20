@@ -125,14 +125,18 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.FriendDao
 import com.example.instachatcompose.ui.activities.data.FriendEntity
+import com.example.instachatcompose.ui.activities.data.Message
 import com.example.instachatcompose.ui.activities.data.UserEntity
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -169,6 +173,8 @@ fun MessagePage() {
     var username by remember { mutableStateOf("Loading...") }
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
+    val viewModel: ChatViewModel = viewModel()
+
 
     LaunchedEffect(userId) {
         fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -230,7 +236,7 @@ fun MessagePage() {
 
                 composable("chat") {
 
-                    ChatScreen(navController)
+                    ChatScreen(navController, viewModel)
                 }
             }
         }
@@ -1125,7 +1131,12 @@ sealed class ChatItem {
 }
 
 @Composable
-fun ChatScreen(navController: NavController) {
+fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
+    val messages by viewModel.messages
+        .map { it.sortedByDescending { msg -> msg.timestamp } }
+        .collectAsState(initial = emptyList())
+    val isFriendTyping by viewModel.isFriendTyping.collectAsState()
+
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
     val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
     val username= if (isGroupChat) {
@@ -1144,9 +1155,9 @@ fun ChatScreen(navController: NavController) {
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
-    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+//    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var messageText by remember { mutableStateOf("") }
-    var isFriendTyping by remember { mutableStateOf(false) }
+//    var isFriendTyping by remember { mutableStateOf(false) }
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
@@ -1172,7 +1183,6 @@ fun ChatScreen(navController: NavController) {
                         messageList.add(message)
                     }
                 }
-                messages = messageList.sortedByDescending { it.timestamp }.toList()
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -1180,29 +1190,16 @@ fun ChatScreen(navController: NavController) {
             }
         })
     }
-
     DisposableEffect(Unit) {
         isChatOpen = true
         onDispose { isChatOpen = false }
     }
-
     LaunchedEffect(chatId) {
-        typingRef.child(receiverUserId).addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val value = snapshot.value
-                isFriendTyping = when (value) {
-                    is Boolean -> value
-                    else -> false
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load typing status: ${error.message}")
-            }
-        })
+        viewModel.observeMessages(chatId, currentUserId, isChatOpen = true)
+        if (!isGroupChat) {
+            viewModel.observeTyping(chatId, receiverUserId)
+        }
     }
-
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1295,7 +1292,6 @@ fun ChatScreen(navController: NavController) {
             }
 
         }
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1316,13 +1312,13 @@ fun ChatScreen(navController: NavController) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = senderName,  // Display "You" or Friend's name
+                            text = senderName,
                             color = Color(0xFF2F9ECE),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
                         Text(
-                            text = message.text, // Display the tagged message
+                            text = message.text,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 14.sp
                         )
@@ -1363,8 +1359,6 @@ fun ChatScreen(navController: NavController) {
                     }
                 }
             }
-
-
             val backgroundColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFF0F0F0)
             Row(
                 modifier = Modifier
@@ -1577,18 +1571,18 @@ fun MessageBubble(
 
 
 
-data class Message(
-    val id: String = "",
-    val senderId: String = "",
-    val receiverId: String = "",
-    val text: String = "",
-    val timestamp: Long = 0,
-    val seen: Boolean = false,
-    val replyTo: String? = null,
-    val edited: Boolean = false,
-    val deletedFor: Map<String, Boolean>? = null
-
-)
+//data class Message(
+//    val id: String = "",
+//    val senderId: String = "",
+//    val receiverId: String = "",
+//    val text: String = "",
+//    val timestamp: Long = 0,
+//    val seen: Boolean = false,
+//    val replyTo: String? = null,
+//    val edited: Boolean = false,
+//    val deletedFor: Map<String, Boolean>? = null
+//
+//)
 
 
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {

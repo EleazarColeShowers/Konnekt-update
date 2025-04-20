@@ -10,6 +10,9 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import com.google.firebase.Firebase
+import com.google.firebase.database.database
+
 
 class ChatViewModel : ViewModel() {
 
@@ -53,12 +56,15 @@ class ChatViewModel : ViewModel() {
 
     fun observeTyping(chatId: String, receiverId: String) {
         val typingRef = db.child("chats").child(chatId).child("typing").child(receiverId)
-
         typingListener?.let { typingRef.removeEventListener(it) }
-
         typingListener = typingRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                _isFriendTyping.value = snapshot.getValue(Boolean::class.java) == true
+                val value = snapshot.value
+                _isFriendTyping.value = when (value) {
+                    is Boolean -> value
+                    is Map<*, *> -> value["isTyping"] as? Boolean ?: false
+                    else -> false
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
