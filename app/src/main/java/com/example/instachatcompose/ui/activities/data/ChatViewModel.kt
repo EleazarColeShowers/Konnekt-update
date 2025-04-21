@@ -15,18 +15,13 @@ import com.google.firebase.database.database
 
 
 class ChatViewModel : ViewModel() {
-
     private val db = Firebase.database.reference
-
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
-
     private val _isFriendTyping = MutableStateFlow(false)
     val isFriendTyping: StateFlow<Boolean> = _isFriendTyping
-
     private var chatListener: ValueEventListener? = null
     private var typingListener: ValueEventListener? = null
-
     fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
 
@@ -98,6 +93,7 @@ class ChatViewModel : ViewModel() {
 data class Message(
     val id: String = "",
     val senderId: String = "",
+    val senderName: String = "",
     val receiverId: String = "",
     val text: String = "",
     val timestamp: Long = 0,

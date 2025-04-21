@@ -982,6 +982,7 @@ fun FriendRow(
                         set("profileImageUri", friendProfileUri)
                         set("chatId", chatId)
                         set("currentUserId", currentUserId)
+                        set("isGroupChat", false)
                     }
                 navController.navigate("chat")
             },
@@ -1155,9 +1156,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
-//    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
     var messageText by remember { mutableStateOf("") }
-//    var isFriendTyping by remember { mutableStateOf(false) }
+
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
