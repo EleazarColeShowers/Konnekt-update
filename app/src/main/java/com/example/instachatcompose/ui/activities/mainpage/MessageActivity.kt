@@ -142,6 +142,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlin.math.absoluteValue
 
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1133,6 +1134,9 @@ sealed class ChatItem {
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
+    var currentUsername by remember { mutableStateOf("") }
+
+
     val messages by viewModel.messages
         .map { it.sortedByDescending { msg -> msg.timestamp } }
         .collectAsState(initial = emptyList())
@@ -1162,7 +1166,11 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-
+    LaunchedEffect(currentUserId) {
+        viewModel.fetchCurrentUserName(currentUserId) { name ->
+            currentUsername = name ?: "Unknown"
+        }
+    }
 
 
     LaunchedEffect(chatId, isChatOpen) {
@@ -1263,6 +1271,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         message = message,
                         currentUserId = currentUserId,
                         onReply = { replyingTo = it },
+                        isGroupChat = true,
                         onEdit ={ messageToEdit ->
                             messageText = messageToEdit.text
                             editingMessageId = messageToEdit.id
@@ -1406,6 +1415,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                 val newMessage = Message(
                                     id = messageKey,
                                     senderId = currentUserId,
+                                    senderName = currentUsername,
                                     receiverId = receiverUserId,
                                     text = messageText,
                                     timestamp = System.currentTimeMillis() + (0..999).random(),
@@ -1437,8 +1447,18 @@ fun MessageBubble(
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
     onDeleteForSelf: (Message) -> Unit,
-    onDeleteForEveryone: (Message) -> Unit
+    onDeleteForEveryone: (Message) -> Unit,
+    isGroupChat: Boolean= false
 ) {
+    val isCurrentUser = message.senderId == currentUserId
+
+    val senderColorMap = remember { mutableMapOf<String, Color>() }
+    val senderColor = remember(message.senderId) {
+        senderColorMap.getOrPut(message.senderId) {
+            generateColorFromId(message.senderId)
+        }
+    }
+
     val isSentByUser = message.senderId == currentUserId
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val maxWidth = screenWidth * 0.7f
@@ -1504,6 +1524,15 @@ fun MessageBubble(
                 .padding(12.dp)
         ) {
             Column {
+                if (isGroupChat && !isSentByUser) {
+                    Text(
+                        text = message.senderName ?: "Unknown",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = senderColor,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
                 message.replyTo?.let {
                     Text(
                         text = "Replying to: $it",
@@ -1569,20 +1598,15 @@ fun MessageBubble(
     }
 }
 
-
-
-//data class Message(
-//    val id: String = "",
-//    val senderId: String = "",
-//    val receiverId: String = "",
-//    val text: String = "",
-//    val timestamp: Long = 0,
-//    val seen: Boolean = false,
-//    val replyTo: String? = null,
-//    val edited: Boolean = false,
-//    val deletedFor: Map<String, Boolean>? = null
-//
-//)
+fun generateColorFromId(id: String): Color {
+    val colors = listOf(
+        Color(0xFFEF5350), Color(0xFFAB47BC), Color(0xFF42A5F5),
+        Color(0xFF26A69A), Color(0xFFFF7043), Color(0xFF66BB6A),
+        Color(0xFFFFCA28), Color(0xFF7E57C2)
+    )
+    val index = (id.hashCode().absoluteValue) % colors.size
+    return colors[index]
+}
 
 
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {

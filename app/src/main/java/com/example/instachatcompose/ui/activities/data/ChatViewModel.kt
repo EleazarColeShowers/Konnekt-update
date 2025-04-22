@@ -22,6 +22,22 @@ class ChatViewModel : ViewModel() {
     val isFriendTyping: StateFlow<Boolean> = _isFriendTyping
     private var chatListener: ValueEventListener? = null
     private var typingListener: ValueEventListener? = null
+    private val _currentUserName = MutableStateFlow<String?>(null)
+    val currentUserName: StateFlow<String?> = _currentUserName
+
+
+    fun fetchCurrentUserName(userId: String, onResult: (String?) -> Unit) {
+        val userRef = db.child("users").child(userId).child("username")
+        userRef.get().addOnSuccessListener { snapshot ->
+            val name = snapshot.getValue(String::class.java)
+            onResult(name)
+        }.addOnFailureListener { error ->
+            Log.e("ChatVM", "Failed to fetch username: ${error.message}")
+            onResult(null)
+        }
+    }
+
+
     fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
 
