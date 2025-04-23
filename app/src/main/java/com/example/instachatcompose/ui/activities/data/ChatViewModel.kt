@@ -24,6 +24,8 @@ class ChatViewModel : ViewModel() {
     private var typingListener: ValueEventListener? = null
     private val _currentUserName = MutableStateFlow<String?>(null)
     val currentUserName: StateFlow<String?> = _currentUserName
+    private val _groupMembers = MutableStateFlow<List<String>>(emptyList())
+    val groupMembers: StateFlow<List<String>> = _groupMembers
 
 
     fun fetchCurrentUserName(userId: String, onResult: (String?) -> Unit) {
@@ -37,6 +39,15 @@ class ChatViewModel : ViewModel() {
         }
     }
 
+    fun fetchGroupMembers(chatId: String) {
+        val membersRef = db.child("groups").child(chatId).child("members")
+        membersRef.get().addOnSuccessListener { snapshot ->
+            val members = snapshot.children.mapNotNull { it.key }
+            _groupMembers.value = members
+        }.addOnFailureListener { error ->
+            Log.e("ChatVM", "Failed to fetch group members: ${error.message}")
+        }
+    }
 
     fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")

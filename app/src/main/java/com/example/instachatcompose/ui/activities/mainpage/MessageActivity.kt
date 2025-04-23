@@ -1135,13 +1135,10 @@ sealed class ChatItem {
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var currentUsername by remember { mutableStateOf("") }
-
-
     val messages by viewModel.messages
         .map { it.sortedByDescending { msg -> msg.timestamp } }
         .collectAsState(initial = emptyList())
     val isFriendTyping by viewModel.isFriendTyping.collectAsState()
-
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
     val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
     val username= if (isGroupChat) {
@@ -1166,6 +1163,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
             currentUsername = name ?: "Unknown"
@@ -1204,10 +1203,13 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     }
     LaunchedEffect(chatId) {
         viewModel.observeMessages(chatId, currentUserId, isChatOpen = true)
-        if (!isGroupChat) {
+        if (isGroupChat) {
+            viewModel.fetchGroupMembers(chatId)
+        } else {
             viewModel.observeTyping(chatId, receiverUserId)
         }
     }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1309,7 +1311,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 .imePadding()
         ) {
             replyingTo?.let { message ->
-                val senderName = if (message.senderId == currentUserId) "You" else username // Assuming friendName is passed
+                val senderName = if (message.senderId == currentUserId) "You" else if(isGroupChat) message.senderName
+                    else username // Assuming friendName is passed
                 val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
 
                 Row(
@@ -1544,8 +1547,6 @@ fun MessageBubble(
                 Text(text = message.text, color = textColor)
             }
         }
-
-        // Styled Dropdown Menu
         Box(
             modifier = Modifier
                 .shadow(8.dp, shape = RoundedCornerShape(16.dp)) // Shadow effect
