@@ -1163,7 +1163,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+    val groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
@@ -1250,6 +1250,12 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     text = username,
                     style = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 )
+                if (isGroupChat) {
+                    Text(
+                        text = groupMembers.joinToString(", "),
+                        style = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground)
+                    )
+                }
                 if (isFriendTyping) {
                     Text(
                         text = "typing...",

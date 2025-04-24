@@ -39,11 +39,15 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    fun fetchGroupMembers(chatId: String) {
-        val membersRef = db.child("groups").child(chatId).child("members")
+    fun fetchGroupMembers(groupId: String) {
+        val fullGroupId = "group_$groupId"
+        val membersRef = db.child("chats").child(fullGroupId).child("members")
+
         membersRef.get().addOnSuccessListener { snapshot ->
-            val members = snapshot.children.mapNotNull { it.key }
-            _groupMembers.value = members
+            val memberNames = snapshot.children.mapNotNull {
+                it.child("name").getValue(String::class.java)
+            }
+            _groupMembers.value = memberNames
         }.addOnFailureListener { error ->
             Log.e("ChatVM", "Failed to fetch group members: ${error.message}")
         }
