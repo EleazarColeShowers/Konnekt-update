@@ -56,7 +56,7 @@ class ChatViewModel : ViewModel() {
     fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
 
-        chatListener?.let { messagesRef.removeEventListener(it) } // Remove previous listener if any
+        chatListener?.let { messagesRef.removeEventListener(it) }
 
         chatListener = messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {

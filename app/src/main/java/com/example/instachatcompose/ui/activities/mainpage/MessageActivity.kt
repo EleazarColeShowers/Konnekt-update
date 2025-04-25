@@ -747,6 +747,7 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
     })
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsListScreen(
@@ -1163,7 +1164,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
-    val groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
@@ -1204,7 +1205,9 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     LaunchedEffect(chatId) {
         viewModel.observeMessages(chatId, currentUserId, isChatOpen = true)
         if (isGroupChat) {
-            viewModel.fetchGroupMembers(chatId)
+            val groupChatList = fetchGroupChats(currentUserId)
+            val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
+            groupMembers = group?.members ?: emptyList()
         } else {
             viewModel.observeTyping(chatId, receiverUserId)
         }
@@ -1253,7 +1256,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 if (isGroupChat) {
                     Text(
                         text = groupMembers.joinToString(", "),
-                        style = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground)
+                        style = TextStyle(fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground)
                     )
                 }
                 if (isFriendTyping) {
