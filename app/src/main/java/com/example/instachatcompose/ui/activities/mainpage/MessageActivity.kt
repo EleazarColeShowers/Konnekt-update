@@ -2,8 +2,6 @@ package com.example.instachatcompose.ui.activities.mainpage
 
 import android.content.Context
 import android.content.Intent
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -67,7 +65,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismiss
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -136,7 +133,9 @@ import com.example.instachatcompose.ui.activities.data.UserEntity
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -711,34 +710,52 @@ data class GroupChat(
 
 suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
     val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
+    val usersRef = FirebaseDatabase.getInstance().reference.child("users")
 
     dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
             val groupChats = mutableListOf<GroupChat>()
+            val allFetchTasks = mutableListOf<Job>()
+
             for (groupSnapshot in snapshot.children) {
                 val key = groupSnapshot.key ?: continue
                 if (!key.startsWith("group_")) continue
 
                 val membersSnapshot = groupSnapshot.child("members")
-                val members = membersSnapshot.children.mapNotNull { it.key }
+                val memberIds = membersSnapshot.children.mapNotNull { it.key }
 
-                if (currentUserId in members) {
+                if (currentUserId in memberIds) {
                     val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
                     val groupId = key.removePrefix("group_")
                     val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
 
+                    val members = mutableListOf<String>()
+
+                    // Fetch usernames for each member
+                    val job = CoroutineScope(Dispatchers.IO).launch {
+                        memberIds.forEach { memberId ->
+                            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
+                            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
+                            members.add(username)
+                        }
+                    }
+                    allFetchTasks.add(job)
 
                     val groupChat = GroupChat(
                         groupId = groupId,
                         groupName = groupName,
-                        members = members,
-                        groupImage= groupImage
+                        members = members, // This will be populated after usernames are fetched
+                        groupImage = groupImage
                     )
-
                     groupChats.add(groupChat)
                 }
             }
-            cont.resume(groupChats)
+
+            // Wait for all usernames to be fetched
+            CoroutineScope(Dispatchers.IO).launch {
+                allFetchTasks.joinAll()
+                cont.resume(groupChats)
+            }
         }
 
         override fun onCancelled(error: DatabaseError) {
@@ -746,6 +763,44 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
         }
     })
 }
+
+//suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
+//    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
+//
+//    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
+//        override fun onDataChange(snapshot: DataSnapshot) {
+//            val groupChats = mutableListOf<GroupChat>()
+//            for (groupSnapshot in snapshot.children) {
+//                val key = groupSnapshot.key ?: continue
+//                if (!key.startsWith("group_")) continue
+//
+//                val membersSnapshot = groupSnapshot.child("members")
+//                val members = membersSnapshot.children.mapNotNull { it.key }
+//
+//                if (currentUserId in members) {
+//                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
+//                    val groupId = key.removePrefix("group_")
+//                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
+//
+//
+//                    val groupChat = GroupChat(
+//                        groupId = groupId,
+//                        groupName = groupName,
+//                        members = members,
+//                        groupImage= groupImage
+//                    )
+//
+//                    groupChats.add(groupChat)
+//                }
+//            }
+//            cont.resume(groupChats)
+//        }
+//
+//        override fun onCancelled(error: DatabaseError) {
+//            cont.resume(emptyList())
+//        }
+//    })
+//}
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1410,18 +1465,16 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
                         if (editingMessageId != null) {
-                            // Edit existing message
                             val messageUpdates = mapOf(
                                 "text" to messageText,
-                                "edited" to true // Mark as edited
+                                "edited" to true
                             )
                             messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
                                 .addOnSuccessListener {
-                                    editingMessageId = null // Reset editing state
-                                    messageText = "" // Clear input field
+                                    editingMessageId = null
+                                    messageText = ""
                                 }
                         } else {
-                            // Send new message
                             val messageKey = messagesRef.push().key
                             if (messageKey != null) {
                                 val newMessage = Message(
@@ -1463,14 +1516,12 @@ fun MessageBubble(
     isGroupChat: Boolean= false
 ) {
     val isCurrentUser = message.senderId == currentUserId
-
     val senderColorMap = remember { mutableMapOf<String, Color>() }
     val senderColor = remember(message.senderId) {
         senderColorMap.getOrPut(message.senderId) {
             generateColorFromId(message.senderId)
         }
     }
-
     val isSentByUser = message.senderId == currentUserId
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val maxWidth = screenWidth * 0.7f
@@ -1488,14 +1539,11 @@ fun MessageBubble(
         targetValue = rawOffsetX,
         animationSpec = tween(durationMillis = 200), label = ""
     )
-
     var menuPositionPx by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
-
     var menuPositionDp by remember {
         mutableStateOf(DpOffset(0.dp, 0.dp))
     }
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
