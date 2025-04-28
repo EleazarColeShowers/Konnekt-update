@@ -731,7 +731,6 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
 
                     val members = mutableListOf<String>()
 
-                    // Fetch usernames for each member
                     val job = CoroutineScope(Dispatchers.IO).launch {
                         memberIds.forEach { memberId ->
                             val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
@@ -764,53 +763,9 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
     })
 }
 
-//suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
-//    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
-//
-//    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
-//        override fun onDataChange(snapshot: DataSnapshot) {
-//            val groupChats = mutableListOf<GroupChat>()
-//            for (groupSnapshot in snapshot.children) {
-//                val key = groupSnapshot.key ?: continue
-//                if (!key.startsWith("group_")) continue
-//
-//                val membersSnapshot = groupSnapshot.child("members")
-//                val members = membersSnapshot.children.mapNotNull { it.key }
-//
-//                if (currentUserId in members) {
-//                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
-//                    val groupId = key.removePrefix("group_")
-//                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
-//
-//
-//                    val groupChat = GroupChat(
-//                        groupId = groupId,
-//                        groupName = groupName,
-//                        members = members,
-//                        groupImage= groupImage
-//                    )
-//
-//                    groupChats.add(groupChat)
-//                }
-//            }
-//            cont.resume(groupChats)
-//        }
-//
-//        override fun onCancelled(error: DatabaseError) {
-//            cont.resume(emptyList())
-//        }
-//    })
-//}
-
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendsListScreen(
-    friendList: List<Pair<Friend, Map<String, String>>>,
-    navController: NavController,
-    currentUserId: String, 
-    searchQuery: String
-) {
+fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String) {
     val context= LocalContext.current
     var sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
@@ -984,12 +939,7 @@ fun FriendsListScreen(
 }
 
 @Composable
-fun FriendRow(
-    friend: Friend,
-    details: Map<String, String>,
-    navController: NavController,
-    currentUserId: String
-) {
+fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavController, currentUserId: String) {
     val friendUsername = details["username"] ?: "Unknown"
     val friendProfileUri = details["profileImageUri"] ?: ""
 
@@ -1089,11 +1039,7 @@ fun FriendRow(
 }
 
 @Composable
-fun GroupAsFriendRow(
-    group: GroupChat,
-    navController: NavController,
-    currentUserId: String
-) {
+fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUserId: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1277,13 +1223,23 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
+//                .clickable {
+//                    val intent = Intent(context, ProfileActivity::class.java).apply {
+//                        putExtra("friendId", receiverUserId)
+//                    }
+//                    context.startActivity(intent)
+//                },
                 .clickable {
                     val intent = Intent(context, ProfileActivity::class.java).apply {
-                        putExtra("friendId", receiverUserId)
+                        if (isGroupChat) {
+                            putExtra("groupId", chatId.removePrefix("group_")) // Assuming chatId starts with "group_"
+                        } else {
+                            putExtra("friendId", receiverUserId)
+                        }
                     }
                     context.startActivity(intent)
                 },
-            verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
         ) {
             if (profileImageUri != Uri.EMPTY) {
                 AsyncImage(
@@ -1506,15 +1462,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MessageBubble(
-    message: Message,
-    currentUserId: String,
-    onReply: (Message) -> Unit,
-    onEdit: (Message) -> Unit,
-    onDeleteForSelf: (Message) -> Unit,
-    onDeleteForEveryone: (Message) -> Unit,
-    isGroupChat: Boolean= false
-) {
+fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) -> Unit, onEdit: (Message) -> Unit, onDeleteForSelf: (Message) -> Unit, onDeleteForEveryone: (Message) -> Unit, isGroupChat: Boolean= false) {
     val isCurrentUser = message.senderId == currentUserId
     val senderColorMap = remember { mutableMapOf<String, Color>() }
     val senderColor = remember(message.senderId) {
@@ -1666,7 +1614,6 @@ fun generateColorFromId(id: String): Color {
     return colors[index]
 }
 
-
 suspend fun fetchLastMessageTimestamp(chatId: String): Long {
     return try {
         val database = Firebase.database.reference
@@ -1742,13 +1689,7 @@ fun BottomAppBar(username: String,profilePic: Uri) {
 }
 
 @Composable
-fun BottomAppBarItem(
-    label: String,
-    isActive: Boolean,
-    activeIcon: Int,
-    passiveIcon: Int,
-    onClick: () -> Unit
-) {
+fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveIcon: Int, onClick: () -> Unit) {
     Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
 
     Column(
@@ -1774,10 +1715,7 @@ fun BottomAppBarItem(
     }
 }
 
-fun loadFriendsWithDetails(
-    userId: String,
-    onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit
-) {
+fun loadFriendsWithDetails(userId: String, onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit) {
     val usersRef = FirebaseDatabase.getInstance().getReference("users")
     val friendsRef = usersRef.child(userId).child("friends")
 

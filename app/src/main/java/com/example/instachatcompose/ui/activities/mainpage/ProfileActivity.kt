@@ -22,6 +22,8 @@ import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.*
+import kotlinx.coroutines.tasks.await
 
 class ProfileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,8 +34,14 @@ class ProfileActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val friendId = intent.getStringExtra("friendId") ?: ""
-                    FriendProfileScreen(friendId)
+                    val friendId = intent.getStringExtra("friendId")
+                    val groupId = intent.getStringExtra("groupId")
+
+                    if (groupId != null) {
+                        GroupProfileScreen(groupId)
+                    } else {
+                        FriendProfileScreen(friendId ?: "")
+                    }
                 }
             }
         }
@@ -67,6 +75,187 @@ fun FriendProfileScreen(friendId: String) {
             }
     }
 
+    ProfileScreen(
+        title = username,
+        subtitle = email,
+        bio = bio,
+        profileImage = profileImage,
+        showFriendButton = true,
+        isFriend = isFriend,
+        onFriendButtonClick = {
+            val currentUserId = currentUser?.uid ?: return@ProfileScreen
+            val userFriendsRef = database.child("users").child(currentUserId).child("friends").push()
+            val friendFriendsRef = database.child("users").child(friendId).child("friends").push()
+
+            if (isFriend) {
+                database.child("users").child(currentUserId).child("friends").get()
+                    .addOnSuccessListener { snapshot ->
+                        snapshot.children.forEach { child ->
+                            if (child.child("friendId").value == friendId) {
+                                child.ref.removeValue()
+                            }
+                        }
+                    }
+                database.child("users").child(friendId).child("friends").get()
+                    .addOnSuccessListener { snapshot ->
+                        snapshot.children.forEach { child ->
+                            if (child.child("friendId").value == currentUserId) {
+                                child.ref.removeValue()
+                            }
+                        }
+                    }
+                isFriend = false
+            } else {
+                val friendshipData = mapOf("friendId" to friendId, "timestamp" to System.currentTimeMillis())
+                val reverseFriendshipData = mapOf("friendId" to currentUserId, "timestamp" to System.currentTimeMillis())
+
+                userFriendsRef.setValue(friendshipData).addOnSuccessListener {
+                    friendFriendsRef.setValue(reverseFriendshipData).addOnSuccessListener {
+                        isFriend = true
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun GroupProfileScreen(groupId: String) {
+    val database = FirebaseDatabase.getInstance().reference
+    val usersRef = database.child("users")
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+
+    var groupName by remember { mutableStateOf("Loading group...") }
+    var groupImage by remember { mutableStateOf<String?>(null) }
+    var members by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    var showEditDialog by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf("") }
+
+    LaunchedEffect(groupId) {
+        val groupSnapshot = database.child("chats").child("group_$groupId").get().await()
+        groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
+        groupImage = groupSnapshot.child("groupImage").getValue(String::class.java)
+
+        val memberIds = groupSnapshot.child("members").children.mapNotNull { it.key }
+
+        val usernames = mutableListOf<String>()
+        for (memberId in memberIds) {
+            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
+            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
+            usernames.add(username)
+        }
+        members = usernames
+    }
+
+    val bioText = if (members.isEmpty()) {
+        "No members found."
+    } else {
+        "Members: ${members.joinToString(", ")}"
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        ProfileScreen(
+            title = groupName,
+            subtitle = "",
+            bio = bioText,
+            profileImage = groupImage,
+            showFriendButton = false
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Edit Group Name Button
+        Button(
+            onClick = { showEditDialog = true },
+            colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            Text("Edit Group Name", color = Color.White)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Change Group Image Button
+        Button(
+            onClick = {
+                // For simplicity, you can simulate a photo URL here
+                CoroutineScope(Dispatchers.IO).launch {
+                    val newPhotoUrl = "https://example.com/new-group-photo.jpg" // Replace this with image picker result later
+                    database.child("chats").child("group_$groupId").child("groupImage").setValue(newPhotoUrl)
+                    groupImage = newPhotoUrl
+                }
+            },
+            colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            Text("Change Group Photo", color = Color.White)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Leave Group Button
+        Button(
+            onClick = {
+                if (currentUserId != null) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        database.child("chats").child("group_$groupId").child("members").child(currentUserId).removeValue()
+                    }
+                }
+            },
+            colors = ButtonDefaults.buttonColors(Color.Red),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(0.8f)
+        ) {
+            Text("Leave Group", color = Color.White)
+        }
+    }
+
+    // Dialog to Edit Group Name
+    if (showEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        database.child("chats").child("group_$groupId").child("groupName").setValue(newGroupName)
+                        groupName = newGroupName
+                    }
+                    showEditDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            title = { Text("Edit Group Name") },
+            text = {
+                OutlinedTextField(
+                    value = newGroupName,
+                    onValueChange = { newGroupName = it },
+                    label = { Text("New Group Name") }
+                )
+            }
+        )
+    }
+}
+
+
+@Composable
+fun ProfileScreen(
+    title: String,
+    subtitle: String,
+    bio: String,
+    profileImage: String?,
+    showFriendButton: Boolean = false,
+    isFriend: Boolean = false,
+    onFriendButtonClick: (() -> Unit)? = null
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -89,9 +278,11 @@ fun FriendProfileScreen(friendId: String) {
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(username, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(email, fontSize = 16.sp, color = Color.Gray)
-            Spacer(modifier = Modifier.height(8.dp))
+            Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            if (subtitle.isNotEmpty()) {
+                Text(subtitle, fontSize = 16.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             Card(
                 modifier = Modifier
@@ -108,53 +299,18 @@ fun FriendProfileScreen(friendId: String) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            if (showFriendButton && onFriendButtonClick != null) {
+                Spacer(modifier = Modifier.height(20.dp))
 
-            Button(
-                onClick = {
-                    val currentUserId = currentUser?.uid ?: return@Button
-                    val userFriendsRef = database.child("users").child(currentUserId).child("friends").push()
-                    val friendFriendsRef = database.child("users").child(friendId).child("friends").push()
-
-                    if (isFriend) {
-                        // Remove friend by finding and deleting the unique entry
-                        database.child("users").child(currentUserId).child("friends").get()
-                            .addOnSuccessListener { snapshot ->
-                                snapshot.children.forEach { child ->
-                                    if (child.child("friendId").value == friendId) {
-                                        child.ref.removeValue()
-                                    }
-                                }
-                            }
-
-                        database.child("users").child(friendId).child("friends").get()
-                            .addOnSuccessListener { snapshot ->
-                                snapshot.children.forEach { child ->
-                                    if (child.child("friendId").value == currentUserId) {
-                                        child.ref.removeValue()
-                                    }
-                                }
-                            }
-
-                        isFriend = false
-                    } else {
-                        val friendshipData = mapOf("friendId" to friendId, "timestamp" to System.currentTimeMillis())
-                        val reverseFriendshipData = mapOf("friendId" to currentUserId, "timestamp" to System.currentTimeMillis())
-
-                        userFriendsRef.setValue(friendshipData).addOnSuccessListener {
-                            friendFriendsRef.setValue(reverseFriendshipData).addOnSuccessListener {
-                                isFriend = true
-                            }
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(0.8f)
-            ) {
-                Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
+                Button(
+                    onClick = onFriendButtonClick,
+                    colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(0.8f)
+                ) {
+                    Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
+                }
             }
-
         }
     }
 }
