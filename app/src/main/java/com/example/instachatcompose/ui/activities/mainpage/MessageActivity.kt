@@ -209,14 +209,19 @@ fun MessagePage() {
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showCreateGroupDialog = true },
-                modifier = Modifier.padding(bottom = 6.dp), // Adjust to avoid overlap with BottomBar
-                containerColor = Color(0xFF2F9ECE)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create Group", tint = Color.White)
+            val currentBackStackEntry = navController.currentBackStackEntryAsState().value
+            val currentRoute = currentBackStackEntry?.destination?.route
+            if (currentRoute == "friends") {
+                FloatingActionButton(
+                    onClick = { showCreateGroupDialog = true },
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    containerColor = Color(0xFF2F9ECE)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Create Group", tint = Color.White)
+                }
             }
         }
+
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             NavHost(
@@ -323,7 +328,9 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(friendList, key = { it.first.friendId }) { (friend, details) ->
+                items(friendList, key = { (friend, _) ->
+                    if (friend.friendId.isNotBlank()) friend.friendId else UUID.randomUUID().toString()
+                }) { (friend, details) ->
                     val friendId = friend.friendId
                     val username = details["username"] ?: "Unknown"
                     val profileImage = details["profileImageUri"] ?: ""
