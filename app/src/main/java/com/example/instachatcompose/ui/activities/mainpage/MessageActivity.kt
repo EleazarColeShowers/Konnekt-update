@@ -769,28 +769,217 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
         }
     })
 }
+//
+//@OptIn(ExperimentalMaterial3Api::class)
+//@Composable
+//fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String) {
+//    val context= LocalContext.current
+//    var sortedFriendList by remember { mutableStateOf(friendList) }
+//    var showDialog by remember { mutableStateOf(false) }
+//    var friendToRemove by remember { mutableStateOf<Friend?>(null) }
+//    val db = AppDatabase.getDatabase(context)
+//    val userDao = db.userDao()
+//    val friendDao = db.friendDao()
+//
+//    val groupChats = remember { mutableStateListOf<GroupChat>() }
+//
+//    LaunchedEffect(Unit) {
+//        val groups = fetchGroupChats(currentUserId)
+//        Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
+//        groupChats.clear()
+//        groupChats.addAll(groups.asReversed())
+//
+//    }
+//
+//    LaunchedEffect(searchQuery) {
+//        val updatedList = withContext(Dispatchers.IO) {
+//            val isOnline = try {
+//                val socket = java.net.Socket()
+//                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
+//                socket.close()
+//                true
+//            } catch (e: Exception) {
+//                false
+//            }
+//
+//            val friendEntities = if (isOnline && friendList.isNotEmpty()) {
+//                val firebaseList = friendList.map { (friend, details) ->
+//                    val chatId = if (currentUserId < friend.friendId) {
+//                        "${currentUserId}_${friend.friendId}"
+//                    } else {
+//                        "${friend.friendId}_${currentUserId}"
+//                    }
+//
+//                    val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
+//
+//                    // Update User table
+//                    val friendAsUser = UserEntity(
+//                        userId = friend.friendId,
+//                        username = details["username"] ?: "",
+//                        email = "",
+//                        bio = "",
+//                        profileImageUri = details["profileImageUri"] ?: ""
+//                    )
+//                    if (userDao.getUserById(friend.friendId) == null) {
+//                        userDao.insertUser(friendAsUser)
+//                    }
+//
+//                    // Update Friend table
+//                    val friendEntity = FriendEntity(
+//                        friendId = friend.friendId,
+//                        username = details["username"] ?: "",
+//                        profileImageUri = details["profileImageUri"] ?: "",
+//                        timestamp = lastMessageTimestamp,
+//                        userId = currentUserId
+//                    )
+//                    friendDao.insertFriends(listOf(friendEntity))
+//
+//                    Triple(friend, details, lastMessageTimestamp)
+//                }
+//                firebaseList
+//            } else {
+//                // Fetch from local Room DB
+//                friendDao.getFriendsForUser(currentUserId).map { entity ->
+//                    val friend = Friend(friendId = entity.friendId)
+//                    val details = mapOf(
+//                        "username" to entity.username,
+//                        "profileImageUri" to entity.profileImageUri
+//                    )
+//                    Triple(friend, details, entity.timestamp)
+//                }
+//            }
+//
+//            friendEntities
+//                .sortedByDescending { it.third }
+//                .map { Pair(it.first, it.second) }
+//                .filter { (_, details) ->
+//                    details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
+//                }
+//        }
+//        sortedFriendList = updatedList
+//    }
+//
+//    val combinedList by remember {
+//        derivedStateOf {
+//            val groupItems = groupChats.map { ChatItem.GroupItem(it) }
+//            val friendItems = sortedFriendList.map { ChatItem.FriendItem(it.first, it.second) }
+//            groupItems + friendItems
+//        }
+//    }
+//
+//
+//
+//
+//    LazyColumn(
+//        modifier = Modifier.fillMaxWidth(),
+//        verticalArrangement = Arrangement.spacedBy(8.dp)
+//    ) {
+//        items(combinedList) { item ->
+//            when (item) {
+//                is ChatItem.FriendItem -> {
+//                    val friend = item.friend
+//                    val details = item.details
+//
+//                    val dismissState = rememberSwipeToDismissBoxState(
+//                        confirmValueChange = {
+//                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+//                                friendToRemove = friend
+//                                showDialog = true
+//                                false
+//                            } else {
+//                                true
+//                            }
+//                        }
+//                    )
+//
+//                    SwipeToDismissBox(
+//                        state = dismissState,
+//                        backgroundContent = { /* your swipe background */ },
+//                        content = {
+//                            FriendRow(friend, details, navController, currentUserId)
+//                        }
+//                    )
+//                }
+//
+//                is ChatItem.GroupItem -> {
+//                    GroupAsFriendRow(group = item.group, navController = navController, currentUserId = currentUserId)
+//                }
+//            }
+//        }
+//    }
+//
+//    if (showDialog && friendToRemove != null) {
+//        val usernameToRemove = friendToRemove?.let { friend ->
+//            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
+//        }
+//
+//        AlertDialog(
+//            onDismissRequest = { showDialog = false },
+//            title = { Text("Remove Friend") },
+//            text = { Text("Are you sure you want to remove $usernameToRemove as a friend?") },
+//            confirmButton = {
+//                Button(
+//                    onClick = {
+//                        friendToRemove?.let { friend ->
+//                            removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
+//                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
+//
+//                            Toast.makeText(
+//                                context,
+//                                "$usernameToRemove is no longer a friend",
+//                                Toast.LENGTH_SHORT
+//                            ).show()
+//                        }
+//                        showDialog = false
+//                    }
+//                ) {
+//                    Text("Yes")
+//                }
+//            },
+//            dismissButton = {
+//                Button(onClick = { showDialog = false }) {
+//                    Text("No")
+//                }
+//            }
+//        )
+//    }
+//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String) {
-    val context= LocalContext.current
+fun FriendsListScreen(
+    friendList: List<Pair<Friend, Map<String, String>>>,
+    navController: NavController,
+    currentUserId: String,
+    searchQuery: String
+) {
+    val context = LocalContext.current
     var sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
+
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
-
     val groupChats = remember { mutableStateListOf<GroupChat>() }
 
     LaunchedEffect(Unit) {
         val groups = fetchGroupChats(currentUserId)
-        Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
         groupChats.clear()
         groupChats.addAll(groups.asReversed())
-
     }
 
+    var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
+
+//    val combinedList by remember(sortedFriendList, groupChats) {
+//        derivedStateOf {
+//            val groupItems = groupChats.map { ChatItem.GroupItem(it, timestamp = 0L) }
+//            val friendItems = sortedFriendList.map { (friend, details) ->
+//                ChatItem.FriendItem(friend, details, timestamp = 0L)
+//            }
+//            groupItems + friendItems
+//        }
+//    }
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
             val isOnline = try {
@@ -803,16 +992,15 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
 
             val friendEntities = if (isOnline && friendList.isNotEmpty()) {
-                val firebaseList = friendList.map { (friend, details) ->
+                friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId) {
                         "${currentUserId}_${friend.friendId}"
                     } else {
                         "${friend.friendId}_${currentUserId}"
                     }
+                    val timestamp = fetchLastMessageTimestamp(chatId)
 
-                    val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-
-                    // Update User table
+                    // Update Room
                     val friendAsUser = UserEntity(
                         userId = friend.friendId,
                         username = details["username"] ?: "",
@@ -823,48 +1011,41 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     if (userDao.getUserById(friend.friendId) == null) {
                         userDao.insertUser(friendAsUser)
                     }
-
-                    // Update Friend table
                     val friendEntity = FriendEntity(
                         friendId = friend.friendId,
                         username = details["username"] ?: "",
                         profileImageUri = details["profileImageUri"] ?: "",
-                        timestamp = lastMessageTimestamp,
+                        timestamp = timestamp,
                         userId = currentUserId
                     )
                     friendDao.insertFriends(listOf(friendEntity))
 
-                    Triple(friend, details, lastMessageTimestamp)
+                    ChatItem.FriendItem(friend, details, timestamp)
                 }
-                firebaseList
             } else {
-                // Fetch from local Room DB
-                friendDao.getFriendsForUser(currentUserId).map { entity ->
-                    val friend = Friend(friendId = entity.friendId)
+                friendDao.getFriendsForUser(currentUserId).map {
                     val details = mapOf(
-                        "username" to entity.username,
-                        "profileImageUri" to entity.profileImageUri
+                        "username" to it.username,
+                        "profileImageUri" to it.profileImageUri
                     )
-                    Triple(friend, details, entity.timestamp)
+                    ChatItem.FriendItem(Friend(it.friendId), details, it.timestamp)
+                }
+            }.filter { it is ChatItem.FriendItem && it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false }
+
+            val groupItems = groupChats.map {
+                val timestamp = fetchLastMessageTimestamp(it.groupId)
+                ChatItem.GroupItem(it, timestamp)
+            }.filter { it.group.groupName.contains(searchQuery, ignoreCase = true) }
+
+            (friendEntities + groupItems).sortedByDescending {
+                when (it) {
+                    is ChatItem.FriendItem -> it.timestamp
+                    is ChatItem.GroupItem -> it.timestamp
                 }
             }
-
-            friendEntities
-                .sortedByDescending { it.third }
-                .map { Pair(it.first, it.second) }
-                .filter { (_, details) ->
-                    details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
-                }
         }
-        sortedFriendList = updatedList
-    }
 
-    val combinedList by remember {
-        derivedStateOf {
-            val groupItems = groupChats.map { ChatItem.GroupItem(it) }
-            val friendItems = sortedFriendList.map { ChatItem.FriendItem(it.first, it.second) }
-            groupItems + friendItems
-        }
+        combinedList = updatedList
     }
 
 
@@ -894,7 +1075,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
 
                     SwipeToDismissBox(
                         state = dismissState,
-                        backgroundContent = { /* your swipe background */ },
+                        backgroundContent = {},
                         content = {
                             FriendRow(friend, details, navController, currentUserId)
                         }
@@ -902,7 +1083,11 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                 }
 
                 is ChatItem.GroupItem -> {
-                    GroupAsFriendRow(group = item.group, navController = navController, currentUserId = currentUserId)
+                    GroupAsFriendRow(
+                        group = item.group,
+                        navController = navController,
+                        currentUserId = currentUserId
+                    )
                 }
             }
         }
@@ -1137,8 +1322,16 @@ fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: 
 }
 
 sealed class ChatItem {
-    data class FriendItem(val friend: Friend, val details: Map<String, String>) : ChatItem()
-    data class GroupItem(val group: GroupChat) : ChatItem()
+    data class FriendItem(
+        val friend: Friend,
+        val details: Map<String, String>,
+        val timestamp: Long
+    ) : ChatItem()
+
+    data class GroupItem(
+        val group: GroupChat,
+        val timestamp: Long
+    ) : ChatItem()
 }
 
 @Composable
