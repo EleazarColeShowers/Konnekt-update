@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.google.firebase.Firebase
 import com.google.firebase.database.database
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 class ChatViewModel : ViewModel() {
@@ -119,6 +122,42 @@ class ChatViewModel : ViewModel() {
             db.removeEventListener(it)
         }
     }
+    fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: FriendDao) {
+        val db = Firebase.database.reference
+
+        db.child("users").child(currentUserId).child("friends")
+            .orderByChild("friendId").equalTo(friendId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    for (child in snapshot.children) {
+                        child.ref.removeValue()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("Firebase", "Error removing friend: ${error.message}")
+                }
+            })
+
+        db.child("users").child(friendId).child("friends")
+            .orderByChild("friendId").equalTo(currentUserId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    for (child in snapshot.children) {
+                        child.ref.removeValue()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("Firebase", "Error removing friend: ${error.message}")
+                }
+            })
+        CoroutineScope(Dispatchers.IO).launch {
+            friendDao.deleteFriend(friendId, currentUserId)
+        }
+
+    }
+
 }
 
 data class Message(

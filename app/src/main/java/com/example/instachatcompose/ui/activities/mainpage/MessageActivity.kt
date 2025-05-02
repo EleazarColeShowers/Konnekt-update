@@ -235,7 +235,8 @@ fun MessagePage() {
                         friendList = friendList,
                         navController = navController,
                         currentUserId = userId,
-                        searchQuery = searchQuery
+                        searchQuery = searchQuery,
+                        viewModel
                     )
                 }
 
@@ -769,181 +770,6 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
         }
     })
 }
-//
-//@OptIn(ExperimentalMaterial3Api::class)
-//@Composable
-//fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String) {
-//    val context= LocalContext.current
-//    var sortedFriendList by remember { mutableStateOf(friendList) }
-//    var showDialog by remember { mutableStateOf(false) }
-//    var friendToRemove by remember { mutableStateOf<Friend?>(null) }
-//    val db = AppDatabase.getDatabase(context)
-//    val userDao = db.userDao()
-//    val friendDao = db.friendDao()
-//
-//    val groupChats = remember { mutableStateListOf<GroupChat>() }
-//
-//    LaunchedEffect(Unit) {
-//        val groups = fetchGroupChats(currentUserId)
-//        Log.d("GC_DEBUG", "Fetched ${groups.size} group chats.")
-//        groupChats.clear()
-//        groupChats.addAll(groups.asReversed())
-//
-//    }
-//
-//    LaunchedEffect(searchQuery) {
-//        val updatedList = withContext(Dispatchers.IO) {
-//            val isOnline = try {
-//                val socket = java.net.Socket()
-//                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
-//                socket.close()
-//                true
-//            } catch (e: Exception) {
-//                false
-//            }
-//
-//            val friendEntities = if (isOnline && friendList.isNotEmpty()) {
-//                val firebaseList = friendList.map { (friend, details) ->
-//                    val chatId = if (currentUserId < friend.friendId) {
-//                        "${currentUserId}_${friend.friendId}"
-//                    } else {
-//                        "${friend.friendId}_${currentUserId}"
-//                    }
-//
-//                    val lastMessageTimestamp = fetchLastMessageTimestamp(chatId)
-//
-//                    // Update User table
-//                    val friendAsUser = UserEntity(
-//                        userId = friend.friendId,
-//                        username = details["username"] ?: "",
-//                        email = "",
-//                        bio = "",
-//                        profileImageUri = details["profileImageUri"] ?: ""
-//                    )
-//                    if (userDao.getUserById(friend.friendId) == null) {
-//                        userDao.insertUser(friendAsUser)
-//                    }
-//
-//                    // Update Friend table
-//                    val friendEntity = FriendEntity(
-//                        friendId = friend.friendId,
-//                        username = details["username"] ?: "",
-//                        profileImageUri = details["profileImageUri"] ?: "",
-//                        timestamp = lastMessageTimestamp,
-//                        userId = currentUserId
-//                    )
-//                    friendDao.insertFriends(listOf(friendEntity))
-//
-//                    Triple(friend, details, lastMessageTimestamp)
-//                }
-//                firebaseList
-//            } else {
-//                // Fetch from local Room DB
-//                friendDao.getFriendsForUser(currentUserId).map { entity ->
-//                    val friend = Friend(friendId = entity.friendId)
-//                    val details = mapOf(
-//                        "username" to entity.username,
-//                        "profileImageUri" to entity.profileImageUri
-//                    )
-//                    Triple(friend, details, entity.timestamp)
-//                }
-//            }
-//
-//            friendEntities
-//                .sortedByDescending { it.third }
-//                .map { Pair(it.first, it.second) }
-//                .filter { (_, details) ->
-//                    details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
-//                }
-//        }
-//        sortedFriendList = updatedList
-//    }
-//
-//    val combinedList by remember {
-//        derivedStateOf {
-//            val groupItems = groupChats.map { ChatItem.GroupItem(it) }
-//            val friendItems = sortedFriendList.map { ChatItem.FriendItem(it.first, it.second) }
-//            groupItems + friendItems
-//        }
-//    }
-//
-//
-//
-//
-//    LazyColumn(
-//        modifier = Modifier.fillMaxWidth(),
-//        verticalArrangement = Arrangement.spacedBy(8.dp)
-//    ) {
-//        items(combinedList) { item ->
-//            when (item) {
-//                is ChatItem.FriendItem -> {
-//                    val friend = item.friend
-//                    val details = item.details
-//
-//                    val dismissState = rememberSwipeToDismissBoxState(
-//                        confirmValueChange = {
-//                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-//                                friendToRemove = friend
-//                                showDialog = true
-//                                false
-//                            } else {
-//                                true
-//                            }
-//                        }
-//                    )
-//
-//                    SwipeToDismissBox(
-//                        state = dismissState,
-//                        backgroundContent = { /* your swipe background */ },
-//                        content = {
-//                            FriendRow(friend, details, navController, currentUserId)
-//                        }
-//                    )
-//                }
-//
-//                is ChatItem.GroupItem -> {
-//                    GroupAsFriendRow(group = item.group, navController = navController, currentUserId = currentUserId)
-//                }
-//            }
-//        }
-//    }
-//
-//    if (showDialog && friendToRemove != null) {
-//        val usernameToRemove = friendToRemove?.let { friend ->
-//            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
-//        }
-//
-//        AlertDialog(
-//            onDismissRequest = { showDialog = false },
-//            title = { Text("Remove Friend") },
-//            text = { Text("Are you sure you want to remove $usernameToRemove as a friend?") },
-//            confirmButton = {
-//                Button(
-//                    onClick = {
-//                        friendToRemove?.let { friend ->
-//                            removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
-//                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
-//
-//                            Toast.makeText(
-//                                context,
-//                                "$usernameToRemove is no longer a friend",
-//                                Toast.LENGTH_SHORT
-//                            ).show()
-//                        }
-//                        showDialog = false
-//                    }
-//                ) {
-//                    Text("Yes")
-//                }
-//            },
-//            dismissButton = {
-//                Button(onClick = { showDialog = false }) {
-//                    Text("No")
-//                }
-//            }
-//        )
-//    }
-//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -951,7 +777,8 @@ fun FriendsListScreen(
     friendList: List<Pair<Friend, Map<String, String>>>,
     navController: NavController,
     currentUserId: String,
-    searchQuery: String
+    searchQuery: String,
+    viewModel: ChatViewModel
 ) {
     val context = LocalContext.current
     var sortedFriendList by remember { mutableStateOf(friendList) }
@@ -1106,7 +933,7 @@ fun FriendsListScreen(
                 Button(
                     onClick = {
                         friendToRemove?.let { friend ->
-                            removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
+                            viewModel.removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
                             sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
 
                             Toast.makeText(
@@ -1232,6 +1059,42 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
 
 @Composable
 fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUserId: String) {
+    var lastMessage by remember { mutableStateOf("Loading...") }
+    var hasUnreadMessages by remember { mutableStateOf(false) }
+
+    DisposableEffect(group.groupId) {
+        val db = Firebase.database.reference
+            .child(group.groupId)
+            .child("messages")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+                if (messages.isNotEmpty()) {
+                    val latestMessage = messages.last()
+                    val senderName = latestMessage.senderName ?: "Unknown"
+                    lastMessage = "$senderName: ${latestMessage.text}"
+
+                    hasUnreadMessages = messages.any {
+                        it.receiverId == currentUserId && !it.seen
+                    }
+                } else {
+                    lastMessage = "No messages yet"
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("GroupRow", "Error fetching group messages: ${error.message}")
+            }
+        }
+
+        db.addValueEventListener(listener)
+
+        onDispose {
+            db.removeEventListener(listener)
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1246,7 +1109,6 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                         set("currentUserId", currentUserId)
                         set("chatId", group.groupId)
                         set("isGroupChat", true)
-
                     }
                 navController.navigate("chat")
             },
@@ -1270,56 +1132,30 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = group.groupName,
                 style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold)
             )
             Text(
-                text = "Group chat",
-                style = TextStyle(fontSize = 14.sp, color = Color.Gray)
+                text = lastMessage,
+                style = TextStyle(fontSize = 14.sp, color = Color.Gray),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (hasUnreadMessages) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF2F9ECE))
             )
         }
     }
 }
 
-fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: FriendDao) {
-    val db = Firebase.database.reference
 
-    db.child("users").child(currentUserId).child("friends")
-        .orderByChild("friendId").equalTo(friendId)
-        .addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                for (child in snapshot.children) {
-                    child.ref.removeValue()
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("Firebase", "Error removing friend: ${error.message}")
-            }
-        })
-
-    db.child("users").child(friendId).child("friends")
-        .orderByChild("friendId").equalTo(currentUserId)
-        .addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                for (child in snapshot.children) {
-                    child.ref.removeValue()
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("Firebase", "Error removing friend: ${error.message}")
-            }
-        })
-    CoroutineScope(Dispatchers.IO).launch {
-        friendDao.deleteFriend(friendId, currentUserId)
-    }
-
-}
 
 sealed class ChatItem {
     data class FriendItem(
