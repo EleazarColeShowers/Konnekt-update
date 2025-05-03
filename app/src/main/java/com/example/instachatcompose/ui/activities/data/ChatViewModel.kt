@@ -5,12 +5,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.example.instachatcompose.ui.activities.mainpage.Friend
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.google.firebase.Firebase
+import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,6 +159,45 @@ class ChatViewModel : ViewModel() {
             friendDao.deleteFriend(friendId, currentUserId)
         }
 
+    }
+    fun loadFriendsWithDetails(userId: String, onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit) {
+        val usersRef = FirebaseDatabase.getInstance().getReference("users")
+        val friendsRef = usersRef.child(userId).child("friends")
+
+        friendsRef.get().addOnSuccessListener { snapshot ->
+            if (snapshot.exists()) {
+                val friendPairs = mutableListOf<Pair<Friend, Map<String, String>>>()
+
+                val detailTasks = snapshot.children.map { friendSnapshot ->
+                    val friendId = friendSnapshot.child("friendId").getValue(String::class.java) ?: ""
+                    val timestamp = friendSnapshot.child("timestamp").getValue(Long::class.java) ?: 0L
+                    val friend = Friend(friendId, timestamp)
+
+                    usersRef.child(friendId).get().continueWith { task ->
+                        val userSnapshot = task.result
+                        val details = if (userSnapshot.exists()) {
+                            mapOf(
+                                "username" to (userSnapshot.child("username").getValue(String::class.java) ?: "Unknown"),
+                                "profileImageUri" to (userSnapshot.child("profileImageUri").getValue(String::class.java) ?: "")
+                            )
+                        } else {
+                            mapOf("username" to "Unknown", "profileImageUri" to "")
+                        }
+                        Pair(friend, details)
+                    }
+                }
+
+                Tasks.whenAllSuccess<Pair<Friend, Map<String, String>>>(detailTasks)
+                    .addOnSuccessListener { friendDetailsList ->
+                        onFriendsLoaded(friendDetailsList)
+                    }
+            } else {
+                onFriendsLoaded(emptyList())
+            }
+        }.addOnFailureListener { exception ->
+            Log.e("Firebase", "Error loading friends: ${exception.message}")
+            onFriendsLoaded(emptyList())
+        }
     }
 
 }
