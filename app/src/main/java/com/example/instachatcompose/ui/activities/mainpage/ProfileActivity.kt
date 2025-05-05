@@ -1,8 +1,11 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +28,7 @@ import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
 
@@ -123,6 +128,8 @@ fun FriendProfileScreen(friendId: String) {
 
 @Composable
 fun GroupProfileScreen(groupId: String) {
+    val context = LocalContext.current
+    val storageRef = FirebaseStorage.getInstance().reference
     val database = FirebaseDatabase.getInstance().reference
     val usersRef = database.child("users")
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
@@ -133,6 +140,20 @@ fun GroupProfileScreen(groupId: String) {
 
     var showEditDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
+
+    val imageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val imageRef = storageRef.child("group_photos/group_$groupId.jpg")
+            CoroutineScope(Dispatchers.IO).launch {
+                imageRef.putFile(uri).await()
+                val downloadUrl = imageRef.downloadUrl.await().toString()
+                database.child("chats").child("group_$groupId").child("groupImage").setValue(downloadUrl)
+                groupImage = downloadUrl
+            }
+        }
+    }
 
     LaunchedEffect(groupId) {
         val groupSnapshot = database.child("chats").child("group_$groupId").get().await()
@@ -172,7 +193,6 @@ fun GroupProfileScreen(groupId: String) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Edit Group Name Button
         Button(
             onClick = { showEditDialog = true },
             colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
@@ -184,16 +204,9 @@ fun GroupProfileScreen(groupId: String) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Change Group Image Button
+        // Change Group Image
         Button(
-            onClick = {
-                // For simplicity, you can simulate a photo URL here
-                CoroutineScope(Dispatchers.IO).launch {
-                    val newPhotoUrl = "https://example.com/new-group-photo.jpg" // Replace this with image picker result later
-                    database.child("chats").child("group_$groupId").child("groupImage").setValue(newPhotoUrl)
-                    groupImage = newPhotoUrl
-                }
-            },
+            onClick = { imageLauncher.launch("image/*") },
             colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(0.8f)
@@ -203,7 +216,6 @@ fun GroupProfileScreen(groupId: String) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Leave Group Button
         Button(
             onClick = {
                 if (currentUserId != null) {
@@ -220,7 +232,6 @@ fun GroupProfileScreen(groupId: String) {
         }
     }
 
-    // Dialog to Edit Group Name
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },

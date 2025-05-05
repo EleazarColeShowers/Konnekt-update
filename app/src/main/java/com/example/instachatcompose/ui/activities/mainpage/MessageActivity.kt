@@ -104,7 +104,6 @@ import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
 import com.example.instachatcompose.ui.activities.konnekt.loadReceivedRequestsWithDetails
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
-import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
@@ -126,7 +125,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
-import com.example.instachatcompose.ui.activities.data.FriendDao
 import com.example.instachatcompose.ui.activities.data.FriendEntity
 import com.example.instachatcompose.ui.activities.data.Message
 import com.example.instachatcompose.ui.activities.data.UserEntity
@@ -177,7 +175,7 @@ fun MessagePage() {
 
 
     LaunchedEffect(userId) {
-        fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
+        viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
             profilePicUrl = fetchedProfilePicUrl
         }
@@ -229,7 +227,7 @@ fun MessagePage() {
                 startDestination = if (friendList.isEmpty()) "message" else "friends",
                 modifier = Modifier.fillMaxSize()
             ) {
-                composable("message") { MessageFrag(username = username, navController) }
+                composable("message") { MessageFrag(username = username) }
                 composable("friends") {
                     FriendsListScreen(
                         friendList = friendList,
@@ -396,6 +394,12 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
                     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+
+                    if (selectedFriends.size < 2) {
+                        Toast.makeText(context, "Select at least two members", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+
                     if (groupName.isNotBlank() && currentUserId != null) {
                         val groupId = "group_${UUID.randomUUID()}"
                         TempGroupIdHolder.groupId = groupId
@@ -463,51 +467,6 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
 
 object TempGroupIdHolder {
     var groupId: String = " "
-}
-
-fun fetchUserProfile(context: Context, userId: String, onResult: (String?, String?) -> Unit) {
-    val database = Firebase.database.reference
-    val userRef = database.child("users").child(userId)
-    val db = AppDatabase.getDatabase(context)
-    val userDao = db.userDao()
-
-    CoroutineScope(Dispatchers.IO).launch {
-        val localUser = userDao.getUserById(userId)
-
-        if (localUser != null) {
-            withContext(Dispatchers.Main) {
-                onResult(localUser.username, localUser.profileImageUri)
-            }
-        }
-
-        userRef.get()
-            .addOnSuccessListener { dataSnapshot ->
-                val username = dataSnapshot.child("username").getValue(String::class.java)
-                val imageUrl = dataSnapshot.child("profileImageUri").getValue(String::class.java)
-
-                if (username != null || imageUrl != null) {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        userDao.insertUser(
-                            UserEntity(
-                                userId = userId,
-                                username = username ?: "",
-                                email = "",  // Not fetched here
-                                bio = "",    // Not fetched here
-                                profileImageUri = imageUrl ?: ""
-                            )
-                        )
-                        withContext(Dispatchers.Main) {
-                            onResult(username, imageUrl)
-                        }
-                    }
-                }
-            }
-            .addOnFailureListener {
-                if (localUser == null) {
-                    onResult(null, null)
-                }
-            }
-    }
 }
 
 @Composable
@@ -661,7 +620,7 @@ fun fetchReceivedRequestsCount(userId: String): State<Int> {
 }
 
 @Composable
-fun MessageFrag(username: String, navController: NavController){
+fun MessageFrag(username: String){
     val messageConnected= painterResource(id = R.drawable.messagechats)
 
     Column(
@@ -773,18 +732,13 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendsListScreen(
-    friendList: List<Pair<Friend, Map<String, String>>>,
-    navController: NavController,
-    currentUserId: String,
-    searchQuery: String,
-    viewModel: ChatViewModel
-) {
+fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
     val context = LocalContext.current
     var sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
-
+    var showGroupDialog by remember { mutableStateOf(false) }
+    var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
@@ -798,15 +752,6 @@ fun FriendsListScreen(
 
     var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
 
-//    val combinedList by remember(sortedFriendList, groupChats) {
-//        derivedStateOf {
-//            val groupItems = groupChats.map { ChatItem.GroupItem(it, timestamp = 0L) }
-//            val friendItems = sortedFriendList.map { (friend, details) ->
-//                ChatItem.FriendItem(friend, details, timestamp = 0L)
-//            }
-//            groupItems + friendItems
-//        }
-//    }
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
             val isOnline = try {
@@ -857,7 +802,7 @@ fun FriendsListScreen(
                     )
                     ChatItem.FriendItem(Friend(it.friendId), details, it.timestamp)
                 }
-            }.filter { it is ChatItem.FriendItem && it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false }
+            }.filter { it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false }
 
             val groupItems = groupChats.map {
                 val timestamp = fetchLastMessageTimestamp(it.groupId)
@@ -910,11 +855,30 @@ fun FriendsListScreen(
                 }
 
                 is ChatItem.GroupItem -> {
-                    GroupAsFriendRow(
-                        group = item.group,
-                        navController = navController,
-                        currentUserId = currentUserId
+                    val groupDismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+                                groupToLeave = item.group
+                                showGroupDialog = true
+                                false
+                            } else {
+                                true
+                            }
+                        }
                     )
+
+                    SwipeToDismissBox(
+                        state = groupDismissState,
+                        backgroundContent = {},
+                        content = {
+                            GroupAsFriendRow(
+                                group = item.group,
+                                navController = navController,
+                                currentUserId = currentUserId
+                            )
+                        }
+                    )
+
                 }
             }
         }
@@ -1154,8 +1118,6 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
         }
     }
 }
-
-
 
 sealed class ChatItem {
     data class FriendItem(

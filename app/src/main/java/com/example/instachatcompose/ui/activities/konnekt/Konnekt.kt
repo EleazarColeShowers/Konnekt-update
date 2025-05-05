@@ -59,6 +59,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -66,9 +67,9 @@ import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
+import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.mainpage.ProfileActivity
-import com.example.instachatcompose.ui.activities.mainpage.fetchUserProfile
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
@@ -87,12 +88,10 @@ class Konnekt : ComponentActivity() {
         val database = FirebaseDatabase.getInstance().reference
         val userRef = database.child("users").child(currentUserId)
 
-        // Fetch the username and display UI directly
         userRef.child("username").get().addOnSuccessListener { snapshot ->
             val currentUsername = snapshot.value as? String ?: "AnonymousUser"
             loadUserUI(currentUsername)
         }.addOnFailureListener { exception ->
-            // Log failure to retrieve username
             Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
 
             loadUserUI("AnonymousUser")
@@ -168,11 +167,11 @@ fun UserAddFriends() {
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
-
+    val viewModel: ChatViewModel = viewModel()
 
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     LaunchedEffect(userId) {
-        fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
+        viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
             profilePicUrl = fetchedProfilePicUrl
         }

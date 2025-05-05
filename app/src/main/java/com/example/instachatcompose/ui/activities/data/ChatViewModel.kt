@@ -1,5 +1,6 @@
 package com.example.instachatcompose.ui.activities.data
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +19,7 @@ import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 class ChatViewModel : ViewModel() {
@@ -197,6 +199,51 @@ class ChatViewModel : ViewModel() {
         }.addOnFailureListener { exception ->
             Log.e("Firebase", "Error loading friends: ${exception.message}")
             onFriendsLoaded(emptyList())
+        }
+    }
+
+    fun fetchUserProfile(context: Context, userId: String, onResult: (String?, String?) -> Unit) {
+        val database = Firebase.database.reference
+        val userRef = database.child("users").child(userId)
+        val db = AppDatabase.getDatabase(context)
+        val userDao = db.userDao()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val localUser = userDao.getUserById(userId)
+
+            if (localUser != null) {
+                withContext(Dispatchers.Main) {
+                    onResult(localUser.username, localUser.profileImageUri)
+                }
+            }
+
+            userRef.get()
+                .addOnSuccessListener { dataSnapshot ->
+                    val username = dataSnapshot.child("username").getValue(String::class.java)
+                    val imageUrl = dataSnapshot.child("profileImageUri").getValue(String::class.java)
+
+                    if (username != null || imageUrl != null) {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            userDao.insertUser(
+                                UserEntity(
+                                    userId = userId,
+                                    username = username ?: "",
+                                    email = "",  // Not fetched here
+                                    bio = "",    // Not fetched here
+                                    profileImageUri = imageUrl ?: ""
+                                )
+                            )
+                            withContext(Dispatchers.Main) {
+                                onResult(username, imageUrl)
+                            }
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    if (localUser == null) {
+                        onResult(null, null)
+                    }
+                }
         }
     }
 
