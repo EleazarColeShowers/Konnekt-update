@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.example.instachatcompose.ui.activities.KonnektApp.Companion.database
 import com.example.instachatcompose.ui.activities.mainpage.Friend
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.DataSnapshot
@@ -246,6 +247,12 @@ class ChatViewModel : ViewModel() {
                 }
         }
     }
+    fun leaveGroup(currentUserId: String, groupId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            db.child("chats").child("group_$groupId").child("members").child(currentUserId).removeValue()
+        }
+    }
+
 
 }
 

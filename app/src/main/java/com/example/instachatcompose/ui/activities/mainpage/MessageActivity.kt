@@ -919,6 +919,41 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
         )
     }
+    if (showGroupDialog && groupToLeave != null) {
+        AlertDialog(
+            onDismissRequest = { showGroupDialog = false },
+            title = { Text("Leave Group") },
+            text = { Text("Are you sure you want to leave '${groupToLeave?.groupName}'?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        groupToLeave?.let { group ->
+                            // Remove from DB or backend
+                            viewModel.leaveGroup(currentUserId, group.groupId)
+
+                            // Remove from list
+                            groupChats.removeIf { it.groupId == group.groupId }
+
+                            Toast.makeText(
+                                context,
+                                "You left '${group.groupName}'",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        showGroupDialog = false
+                    }
+                ) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showGroupDialog = false }) {
+                    Text("No")
+                }
+            }
+        )
+    }
+
 }
 
 @Composable
