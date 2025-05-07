@@ -6,8 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.instachatcompose.ui.activities.KonnektApp.Companion.database
 import com.example.instachatcompose.ui.activities.mainpage.Friend
+import com.example.instachatcompose.ui.activities.mainpage.GroupChat
+import com.example.instachatcompose.ui.activities.mainpage.fetchGroupChats
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -35,7 +38,15 @@ class ChatViewModel : ViewModel() {
     val currentUserName: StateFlow<String?> = _currentUserName
     private val _groupMembers = MutableStateFlow<List<String>>(emptyList())
     val groupMembers: StateFlow<List<String>> = _groupMembers
+    private val _groupChats = MutableStateFlow<List<GroupChat>>(emptyList())
+    val groupChats: StateFlow<List<GroupChat>> = _groupChats
 
+    fun loadGroupChats(currentUserId: String) {
+        viewModelScope.launch {
+            val groups = fetchGroupChats(currentUserId)
+            _groupChats.value = groups.asReversed()
+        }
+    }
 
     fun fetchCurrentUserName(userId: String, onResult: (String?) -> Unit) {
         val userRef = db.child("users").child(userId).child("username")
@@ -251,6 +262,10 @@ class ChatViewModel : ViewModel() {
         CoroutineScope(Dispatchers.IO).launch {
             db.child("chats").child("group_$groupId").child("members").child(currentUserId).removeValue()
         }
+    }
+
+    fun removeGroupChat(groupId: String) {
+        _groupChats.value = _groupChats.value.filterNot { it.groupId == groupId }
     }
 
 

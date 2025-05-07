@@ -742,13 +742,16 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
-    val groupChats = remember { mutableStateListOf<GroupChat>() }
+
+
+
+
+    val groupChats by viewModel.groupChats.collectAsState()
 
     LaunchedEffect(Unit) {
-        val groups = fetchGroupChats(currentUserId)
-        groupChats.clear()
-        groupChats.addAll(groups.asReversed())
+        viewModel.loadGroupChats(currentUserId)
     }
+
 
     var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
 
@@ -928,11 +931,8 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                 Button(
                     onClick = {
                         groupToLeave?.let { group ->
-                            // Remove from DB or backend
                             viewModel.leaveGroup(currentUserId, group.groupId)
-
-                            // Remove from list
-                            groupChats.removeIf { it.groupId == group.groupId }
+                            viewModel.removeGroupChat(group.groupId)
 
                             Toast.makeText(
                                 context,
