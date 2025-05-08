@@ -173,7 +173,6 @@ fun MessagePage() {
     val context= LocalContext.current
     val viewModel: ChatViewModel = viewModel()
 
-
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
@@ -188,6 +187,10 @@ fun MessagePage() {
             friendList.addAll(friends)
         }
     }
+    LaunchedEffect(userId) {
+        viewModel.loadGroupChats(userId)
+    }
+
 
     val navController = rememberNavController()
 
@@ -742,19 +745,12 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
-
-
-
-
     val groupChats by viewModel.groupChats.collectAsState()
-
-    LaunchedEffect(Unit) {
-        viewModel.loadGroupChats(currentUserId)
-    }
-
-
     var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
 
+//    LaunchedEffect(currentUserId) {
+//        viewModel.loadGroupChats(currentUserId)
+//    }
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
             val isOnline = try {
@@ -765,7 +761,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             } catch (e: Exception) {
                 false
             }
-
             val friendEntities = if (isOnline && friendList.isNotEmpty()) {
                 friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId) {
@@ -774,8 +769,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         "${friend.friendId}_${currentUserId}"
                     }
                     val timestamp = fetchLastMessageTimestamp(chatId)
-
-                    // Update Room
                     val friendAsUser = UserEntity(
                         userId = friend.friendId,
                         username = details["username"] ?: "",
@@ -822,9 +815,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
 
         combinedList = updatedList
     }
-
-
-
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),

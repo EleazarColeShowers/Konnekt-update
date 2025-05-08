@@ -24,8 +24,8 @@ data class UserEntity(
     )]
 )
 data class FriendEntity(
-    @PrimaryKey val friendId: String, // The ID of the friend
-    val userId: String, // The owner of this friend record
+    @PrimaryKey val friendId: String,
+    val userId: String,
     val username: String,
     val profileImageUri: String,
     val timestamp: Long

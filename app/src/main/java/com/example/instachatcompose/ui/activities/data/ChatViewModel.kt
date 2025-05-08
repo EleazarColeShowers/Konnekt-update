@@ -282,5 +282,4 @@ data class Message(
     val replyTo: String? = null,
     val edited: Boolean = false,
     val deletedFor: Map<String, Boolean>? = null
-
 )
