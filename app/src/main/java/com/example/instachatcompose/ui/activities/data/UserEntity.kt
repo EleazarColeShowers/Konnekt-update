@@ -13,7 +13,6 @@ data class UserEntity(
     val bio: String,
     val profileImageUri: String
 )
-
 @Entity(
     tableName = "friends",
     foreignKeys = [ForeignKey(
@@ -30,7 +29,6 @@ data class FriendEntity(
     val profileImageUri: String,
     val timestamp: Long
 )
-
 @Entity(tableName = "messages")
 data class MessageEntity(
     @PrimaryKey val messageId: String,

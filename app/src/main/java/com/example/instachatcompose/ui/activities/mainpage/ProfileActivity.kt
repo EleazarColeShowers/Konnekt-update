@@ -171,11 +171,13 @@ fun GroupProfileScreen(groupId: String) {
         members = usernames
     }
 
-    val bioText = if (members.isEmpty()) {
-        "No members found."
-    } else {
-        "Members: ${members.joinToString(", ")}"
-    }
+//    val bioText = if (members.isEmpty()) {
+//        "No members found."
+//    } else {
+//        "Members: ${members.joinToString(", ")}"
+//    }
+    val bioText: String? = null // or add an optional description here if you like
+
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -187,12 +189,11 @@ fun GroupProfileScreen(groupId: String) {
             title = groupName,
             subtitle = "",
             bio = bioText,
+            members = members,
             profileImage = groupImage,
             showFriendButton = false
         )
-
         Spacer(modifier = Modifier.height(16.dp))
-
         Button(
             onClick = { showEditDialog = true },
             colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
@@ -201,10 +202,7 @@ fun GroupProfileScreen(groupId: String) {
         ) {
             Text("Edit Group Name", color = Color.White)
         }
-
         Spacer(modifier = Modifier.height(8.dp))
-
-        // Change Group Image
         Button(
             onClick = { imageLauncher.launch("image/*") },
             colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
@@ -213,9 +211,7 @@ fun GroupProfileScreen(groupId: String) {
         ) {
             Text("Change Group Photo", color = Color.White)
         }
-
         Spacer(modifier = Modifier.height(8.dp))
-
         Button(
             onClick = {
                 if (currentUserId != null) {
@@ -231,7 +227,6 @@ fun GroupProfileScreen(groupId: String) {
             Text("Leave Group", color = Color.White)
         }
     }
-
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -263,12 +258,12 @@ fun GroupProfileScreen(groupId: String) {
     }
 }
 
-
 @Composable
 fun ProfileScreen(
     title: String,
     subtitle: String,
-    bio: String,
+    bio: String? = null,
+    members: List<String>? = null,
     profileImage: String?,
     showFriendButton: Boolean = false,
     isFriend: Boolean = false,
@@ -309,12 +304,31 @@ fun ProfileScreen(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
             ) {
-                Text(
-                    text = bio,
-                    fontSize = 16.sp,
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    bio?.let {
+                        Text(
+                            text = it,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    members?.let {
+                        Text(
+                            text = "Members:",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        it.forEach { member ->
+                            Text(
+                                text = "• $member",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
             }
 
             if (showFriendButton && onFriendButtonClick != null) {
@@ -332,3 +346,73 @@ fun ProfileScreen(
         }
     }
 }
+
+
+//@Composable
+//fun ProfileScreen(
+//    title: String,
+//    subtitle: String,
+//    bio: String,
+//    profileImage: String?,
+//    showFriendButton: Boolean = false,
+//    isFriend: Boolean = false,
+//    onFriendButtonClick: (() -> Unit)? = null
+//) {
+//    Box(
+//        modifier = Modifier
+//            .fillMaxWidth()
+//            .background(MaterialTheme.colorScheme.surface)
+//            .padding(16.dp),
+//        contentAlignment = Alignment.TopCenter
+//    ) {
+//        Column(
+//            horizontalAlignment = Alignment.CenterHorizontally,
+//            modifier = Modifier.fillMaxWidth()
+//        ) {
+//            Spacer(modifier = Modifier.height(40.dp))
+//            Image(
+//                painter = rememberAsyncImagePainter(profileImage ?: R.drawable.nopfp),
+//                contentDescription = "Profile Picture",
+//                modifier = Modifier
+//                    .size(120.dp)
+//                    .clip(CircleShape)
+//                    .background(Color.Gray)
+//            )
+//            Spacer(modifier = Modifier.height(16.dp))
+//
+//            Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+//            if (subtitle.isNotEmpty()) {
+//                Text(subtitle, fontSize = 16.sp, color = Color.Gray)
+//                Spacer(modifier = Modifier.height(8.dp))
+//            }
+//
+//            Card(
+//                modifier = Modifier
+//                    .fillMaxWidth(0.9f)
+//                    .padding(8.dp),
+//                shape = RoundedCornerShape(12.dp),
+//                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+//            ) {
+//                Text(
+//                    text = bio,
+//                    fontSize = 16.sp,
+//                    modifier = Modifier.padding(16.dp),
+//                    color = MaterialTheme.colorScheme.onSecondaryContainer
+//                )
+//            }
+//
+//            if (showFriendButton && onFriendButtonClick != null) {
+//                Spacer(modifier = Modifier.height(20.dp))
+//
+//                Button(
+//                    onClick = onFriendButtonClick,
+//                    colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
+//                    shape = RoundedCornerShape(12.dp),
+//                    modifier = Modifier.fillMaxWidth(0.8f)
+//                ) {
+//                    Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
+//                }
+//            }
+//        }
+//    }
+//}
