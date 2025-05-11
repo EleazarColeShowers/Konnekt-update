@@ -122,10 +122,12 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.room.Room
 import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.FriendEntity
+import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
 import com.example.instachatcompose.ui.activities.data.UserEntity
 import com.google.firebase.storage.FirebaseStorage
@@ -262,7 +264,11 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
     var groupName by remember { mutableStateOf("") }
     val selectedFriends = remember { mutableStateListOf<String>() }
     var groupImageUri by remember { mutableStateOf<Uri?>(null) }
-
+    val db = Room.databaseBuilder(
+        context.applicationContext, // use applicationContext to avoid memory leaks
+        AppDatabase::class.java,
+        "instachat_db"
+    ).build()
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -433,7 +439,20 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                                             .addOnFailureListener {
                                                 Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
                                             }
+                                        val groupEntity = GroupEntity(
+                                            groupId = groupId,
+                                            groupName = groupName,
+                                            groupImageUri = downloadUrl.toString(),
+                                            memberIds = members.joinToString(",") // Or use Gson to serialize to JSON
+                                        )
+
+
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            db.groupDao().insertGroup(groupEntity)
+                                        }
                                     }
+
+
                                 }
                                 .addOnFailureListener {
                                     Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
@@ -748,9 +767,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val groupChats by viewModel.groupChats.collectAsState()
     var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
 
-//    LaunchedEffect(currentUserId) {
-//        viewModel.loadGroupChats(currentUserId)
-//    }
     LaunchedEffect(searchQuery) {
         val updatedList = withContext(Dispatchers.IO) {
             val isOnline = try {

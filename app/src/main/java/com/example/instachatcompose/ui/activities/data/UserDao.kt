@@ -48,3 +48,12 @@ interface MessageDao {
     @Query("UPDATE messages SET seen = 1 WHERE messageId = :messageId")
     suspend fun markMessageAsSeen(messageId: String)
 }
+
+@Dao
+interface GroupDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroup(group: GroupEntity)
+
+    @Query("SELECT * FROM groups")
+    fun getAllGroups(): Flow<List<GroupEntity>>
+}

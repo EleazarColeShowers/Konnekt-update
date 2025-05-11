@@ -13,6 +13,7 @@ data class UserEntity(
     val bio: String,
     val profileImageUri: String
 )
+
 @Entity(
     tableName = "friends",
     foreignKeys = [ForeignKey(
@@ -29,6 +30,7 @@ data class FriendEntity(
     val profileImageUri: String,
     val timestamp: Long
 )
+
 @Entity(tableName = "messages")
 data class MessageEntity(
     @PrimaryKey val messageId: String,
@@ -38,4 +40,12 @@ data class MessageEntity(
     val timestamp: Long,
     val seen: Boolean,
     val edited: Boolean
+)
+
+@Entity(tableName = "groups")
+data class GroupEntity(
+    @PrimaryKey val groupId: String,
+    val groupName: String,
+    val groupImageUri: String?,
+    val memberIds: String // Store as comma-separated IDs or JSON if needed
 )

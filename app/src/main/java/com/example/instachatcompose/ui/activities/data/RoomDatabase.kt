@@ -7,20 +7,23 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [UserEntity::class, FriendEntity::class, MessageEntity::class], version = 2)
+@Database(
+    entities = [UserEntity::class, FriendEntity::class, MessageEntity::class, GroupEntity::class],
+    version = 3
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
     abstract fun friendDao(): FriendDao
     abstract fun messageDao(): MessageDao
+    abstract fun groupDao(): GroupDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                // Step 1: Create new friends table with the additional userId column
-                database.execSQL("""
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
                     CREATE TABLE friends_new (
                         friendId TEXT NOT NULL PRIMARY KEY,
                         userId TEXT NOT NULL,
@@ -31,19 +34,29 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """)
 
-
-                database.execSQL("""
+                db.execSQL("""
                     INSERT INTO friends_new (friendId, userId, username, profileImageUri, timestamp)
                     SELECT friendId, 'default_user', username, profileImageUri, timestamp FROM friends
                 """)
 
-                // Step 3: Drop the old table
-                database.execSQL("DROP TABLE friends")
-
-                // Step 4: Rename new table
-                database.execSQL("ALTER TABLE friends_new RENAME TO friends")
+                db.execSQL("DROP TABLE friends")
+                db.execSQL("ALTER TABLE friends_new RENAME TO friends")
             }
         }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `groups` (
+                        groupId TEXT NOT NULL PRIMARY KEY,
+                        groupName TEXT NOT NULL,
+                        groupImageUri TEXT,
+                        memberIds TEXT NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -52,7 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "instachat_db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
