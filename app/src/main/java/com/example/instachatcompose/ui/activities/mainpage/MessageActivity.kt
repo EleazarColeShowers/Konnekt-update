@@ -134,6 +134,7 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -764,6 +765,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val db = AppDatabase.getDatabase(context)
     val userDao = db.userDao()
     val friendDao = db.friendDao()
+    val groupDao = db.groupDao()
     val groupChats by viewModel.groupChats.collectAsState()
     var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
 
@@ -816,10 +818,35 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                 }
             }.filter { it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false }
 
-            val groupItems = groupChats.map {
-                val timestamp = fetchLastMessageTimestamp(it.groupId)
-                ChatItem.GroupItem(it, timestamp)
+            val groupItems = if (isOnline && groupChats.isNotEmpty()) {
+                groupChats.map {
+                    val timestamp = fetchLastMessageTimestamp(it.groupId)
+                     groupDao.insertGroup(
+                        GroupEntity(
+                            groupId = it.groupId,
+                            groupName = it.groupName,
+                            groupImageUri = it.groupImage,
+                            memberIds = it.members.joinToString(",")
+                        )
+                    )
+
+                    ChatItem.GroupItem(it, timestamp)
+                }
+            } else {
+                groupDao.getAllGroups().first().map {
+                    val timestamp = fetchLastMessageTimestamp(it.groupId)
+                    ChatItem.GroupItem(
+                        GroupChat(
+                            groupId = it.groupId,
+                            groupName = it.groupName,
+                            groupImage = it.groupImageUri ?: "",
+                            members = it.memberIds.split(",")
+                        ),
+                        timestamp
+                    )
+                }
             }.filter { it.group.groupName.contains(searchQuery, ignoreCase = true) }
+
 
             (friendEntities + groupItems).sortedByDescending {
                 when (it) {
