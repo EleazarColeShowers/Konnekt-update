@@ -739,14 +739,11 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
                     groupChats.add(groupChat)
                 }
             }
-
-            // Wait for all usernames to be fetched
             CoroutineScope(Dispatchers.IO).launch {
                 allFetchTasks.joinAll()
                 cont.resume(groupChats)
             }
         }
-
         override fun onCancelled(error: DatabaseError) {
             cont.resume(emptyList())
         }
@@ -767,96 +764,10 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val friendDao = db.friendDao()
     val groupDao = db.groupDao()
     val groupChats by viewModel.groupChats.collectAsState()
-    var combinedList by remember { mutableStateOf<List<ChatItem>>(emptyList()) }
+    val combinedList by viewModel.combinedChatList.collectAsState()
 
-    LaunchedEffect(searchQuery) {
-        val updatedList = withContext(Dispatchers.IO) {
-            val isOnline = try {
-                val socket = java.net.Socket()
-                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
-                socket.close()
-                true
-            } catch (e: Exception) {
-                false
-            }
-            val friendEntities = if (isOnline && friendList.isNotEmpty()) {
-                friendList.map { (friend, details) ->
-                    val chatId = if (currentUserId < friend.friendId) {
-                        "${currentUserId}_${friend.friendId}"
-                    } else {
-                        "${friend.friendId}_${currentUserId}"
-                    }
-                    val timestamp = fetchLastMessageTimestamp(chatId)
-                    val friendAsUser = UserEntity(
-                        userId = friend.friendId,
-                        username = details["username"] ?: "",
-                        email = "",
-                        bio = "",
-                        profileImageUri = details["profileImageUri"] ?: ""
-                    )
-                    if (userDao.getUserById(friend.friendId) == null) {
-                        userDao.insertUser(friendAsUser)
-                    }
-                    val friendEntity = FriendEntity(
-                        friendId = friend.friendId,
-                        username = details["username"] ?: "",
-                        profileImageUri = details["profileImageUri"] ?: "",
-                        timestamp = timestamp,
-                        userId = currentUserId
-                    )
-                    friendDao.insertFriends(listOf(friendEntity))
-
-                    ChatItem.FriendItem(friend, details, timestamp)
-                }
-            } else {
-                friendDao.getFriendsForUser(currentUserId).map {
-                    val details = mapOf(
-                        "username" to it.username,
-                        "profileImageUri" to it.profileImageUri
-                    )
-                    ChatItem.FriendItem(Friend(it.friendId), details, it.timestamp)
-                }
-            }.filter { it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false }
-
-            val groupItems = if (isOnline && groupChats.isNotEmpty()) {
-                groupChats.map {
-                    val timestamp = fetchLastMessageTimestamp(it.groupId)
-                     groupDao.insertGroup(
-                        GroupEntity(
-                            groupId = it.groupId,
-                            groupName = it.groupName,
-                            groupImageUri = it.groupImage,
-                            memberIds = it.members.joinToString(",")
-                        )
-                    )
-
-                    ChatItem.GroupItem(it, timestamp)
-                }
-            } else {
-                groupDao.getAllGroups().first().map {
-                    val timestamp = fetchLastMessageTimestamp(it.groupId)
-                    ChatItem.GroupItem(
-                        GroupChat(
-                            groupId = it.groupId,
-                            groupName = it.groupName,
-                            groupImage = it.groupImageUri ?: "",
-                            members = it.memberIds.split(",")
-                        ),
-                        timestamp
-                    )
-                }
-            }.filter { it.group.groupName.contains(searchQuery, ignoreCase = true) }
-
-
-            (friendEntities + groupItems).sortedByDescending {
-                when (it) {
-                    is ChatItem.FriendItem -> it.timestamp
-                    is ChatItem.GroupItem -> it.timestamp
-                }
-            }
-        }
-
-        combinedList = updatedList
+    LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {
+        viewModel.refreshCombinedChatList(currentUserId, friendList, searchQuery, context, viewModel.groupChats.value)
     }
 
     LazyColumn(
@@ -919,12 +830,10 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
         }
     }
-
     if (showDialog && friendToRemove != null) {
         val usernameToRemove = friendToRemove?.let { friend ->
             sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
         }
-
         AlertDialog(
             onDismissRequest = { showDialog = false },
             title = { Text("Remove Friend") },
@@ -966,7 +875,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         groupToLeave?.let { group ->
                             viewModel.leaveGroup(currentUserId, group.groupId)
                             viewModel.removeGroupChat(group.groupId)
-
                             Toast.makeText(
                                 context,
                                 "You left '${group.groupName}'",
@@ -986,7 +894,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
         )
     }
-
 }
 
 @Composable

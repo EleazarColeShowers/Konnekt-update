@@ -1,16 +1,21 @@
 package com.example.instachatcompose.ui.activities.data
 
+import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.instachatcompose.ui.activities.KonnektApp.Companion.database
+import com.example.instachatcompose.ui.activities.mainpage.ChatItem
 import com.example.instachatcompose.ui.activities.mainpage.Friend
 import com.example.instachatcompose.ui.activities.mainpage.GroupChat
 import com.example.instachatcompose.ui.activities.mainpage.fetchGroupChats
+import com.example.instachatcompose.ui.activities.mainpage.fetchLastMessageTimestamp
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -22,11 +27,12 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     private val db = Firebase.database.reference
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
@@ -40,6 +46,121 @@ class ChatViewModel : ViewModel() {
     val groupMembers: StateFlow<List<String>> = _groupMembers
     private val _groupChats = MutableStateFlow<List<GroupChat>>(emptyList())
     val groupChats: StateFlow<List<GroupChat>> = _groupChats
+    private val _combinedChatList = MutableStateFlow<List<ChatItem>>(emptyList())
+    val combinedChatList: StateFlow<List<ChatItem>> = _combinedChatList
+    private val appDatabase = AppDatabase.getDatabase(application)
+    private val groupDao = appDatabase.groupDao()
+
+    fun refreshCombinedChatList(
+        currentUserId: String,
+        friendList: List<Pair<Friend, Map<String, String>>>,
+        searchQuery: String,
+        context: Context,
+        groupChats: List<GroupChat>
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(context)
+            val userDao = db.userDao()
+            val friendDao = db.friendDao()
+            val groupDao = db.groupDao()
+
+            val isOnline = try {
+                val socket = java.net.Socket()
+                socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
+                socket.close()
+                true
+            } catch (e: Exception) {
+                false
+            }
+
+            val friendItems = if (isOnline && friendList.isNotEmpty()) {
+                friendList.map { (friend, details) ->
+                    val chatId = if (currentUserId < friend.friendId) {
+                        "${currentUserId}_${friend.friendId}"
+                    } else {
+                        "${friend.friendId}_${currentUserId}"
+                    }
+                    val timestamp = fetchLastMessageTimestamp(chatId)
+
+                    val friendAsUser = UserEntity(
+                        userId = friend.friendId,
+                        username = details["username"] ?: "",
+                        email = "",
+                        bio = "",
+                        profileImageUri = details["profileImageUri"] ?: ""
+                    )
+
+                    if (userDao.getUserById(friend.friendId) == null) {
+                        userDao.insertUser(friendAsUser)
+                    }
+
+                    friendDao.insertFriends(
+                        listOf(
+                            FriendEntity(
+                                friendId = friend.friendId,
+                                username = details["username"] ?: "",
+                                profileImageUri = details["profileImageUri"] ?: "",
+                                timestamp = timestamp,
+                                userId = currentUserId
+                            )
+                        )
+                    )
+
+                    ChatItem.FriendItem(friend, details, timestamp)
+                }
+            } else {
+                friendDao.getFriendsForUser(currentUserId).map {
+                    val details = mapOf(
+                        "username" to it.username,
+                        "profileImageUri" to it.profileImageUri
+                    )
+                    ChatItem.FriendItem(Friend(it.friendId), details, it.timestamp)
+                }
+            }.filter {
+                it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
+            }
+
+            val groupItems = if (isOnline && groupChats.isNotEmpty()) {
+                groupChats.map {
+                    val timestamp = fetchLastMessageTimestamp(it.groupId)
+
+                    groupDao.insertGroup(
+                        GroupEntity(
+                            groupId = it.groupId,
+                            groupName = it.groupName,
+                            groupImageUri = it.groupImage,
+                            memberIds = it.members.joinToString(",")
+                        )
+                    )
+
+                    ChatItem.GroupItem(it, timestamp)
+                }
+            } else {
+                groupDao.getAllGroups().first().map {
+                    val timestamp = fetchLastMessageTimestamp(it.groupId)
+                    ChatItem.GroupItem(
+                        GroupChat(
+                            groupId = it.groupId,
+                            groupName = it.groupName,
+                            groupImage = it.groupImageUri ?: "",
+                            members = it.memberIds.split(",")
+                        ),
+                        timestamp
+                    )
+                }
+            }.filter {
+                it.group.groupName.contains(searchQuery, ignoreCase = true)
+            }
+
+            _combinedChatList.value = (friendItems + groupItems).sortedByDescending {
+                when (it) {
+                    is ChatItem.FriendItem -> it.timestamp
+                    is ChatItem.GroupItem -> it.timestamp
+                }
+            }
+        }
+    }
+
 
     fun loadGroupChats(currentUserId: String) {
         viewModelScope.launch {
@@ -259,15 +380,16 @@ class ChatViewModel : ViewModel() {
         }
     }
     fun leaveGroup(currentUserId: String, groupId: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            db.child("chats").child("group_$groupId").child("members").child(currentUserId).removeValue()
+        db.child("chats").child("group_$groupId").child("members").child(currentUserId).removeValue()
+        viewModelScope.launch(Dispatchers.IO) {
+            groupDao.deleteGroup(groupId)
+            Log.d("RoomDB", "Group $groupId removed from local database.")
         }
     }
 
     fun removeGroupChat(groupId: String) {
         _groupChats.value = _groupChats.value.filterNot { it.groupId == groupId }
     }
-
 
 }
 
