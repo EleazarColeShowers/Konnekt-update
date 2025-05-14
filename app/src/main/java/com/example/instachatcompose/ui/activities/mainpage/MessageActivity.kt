@@ -442,6 +442,7 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                                             }
                                         val groupEntity = GroupEntity(
                                             groupId = groupId,
+                                            userId= currentUserId,
                                             groupName = groupName,
                                             groupImageUri = downloadUrl.toString(),
                                             memberIds = members.joinToString(",") // Or use Gson to serialize to JSON
@@ -760,10 +761,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var showGroupDialog by remember { mutableStateOf(false) }
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val db = AppDatabase.getDatabase(context)
-    val userDao = db.userDao()
     val friendDao = db.friendDao()
-    val groupDao = db.groupDao()
-    val groupChats by viewModel.groupChats.collectAsState()
     val combinedList by viewModel.combinedChatList.collectAsState()
 
     LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {

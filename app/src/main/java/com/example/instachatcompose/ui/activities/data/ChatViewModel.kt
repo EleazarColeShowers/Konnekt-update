@@ -31,7 +31,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-
 class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     private val db = Firebase.database.reference
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -127,6 +126,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     groupDao.insertGroup(
                         GroupEntity(
                             groupId = it.groupId,
+                            userId = currentUserId,
                             groupName = it.groupName,
                             groupImageUri = it.groupImage,
                             memberIds = it.members.joinToString(",")
@@ -136,7 +136,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     ChatItem.GroupItem(it, timestamp)
                 }
             } else {
-                groupDao.getAllGroups().first().map {
+                groupDao.getGroupsForUser(currentUserId).first().map {
                     val timestamp = fetchLastMessageTimestamp(it.groupId)
                     ChatItem.GroupItem(
                         GroupChat(

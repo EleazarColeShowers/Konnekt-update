@@ -60,4 +60,7 @@ interface GroupDao {
     @Query("DELETE FROM groups WHERE groupId = :groupId")
     suspend fun deleteGroup(groupId: String)
 
+    @Query("SELECT * FROM groups WHERE userId = :userId")
+    fun getGroupsForUser(userId: String): Flow<List<GroupEntity>>
+
 }

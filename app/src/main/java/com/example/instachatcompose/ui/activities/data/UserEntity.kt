@@ -45,6 +45,7 @@ data class MessageEntity(
 @Entity(tableName = "groups")
 data class GroupEntity(
     @PrimaryKey val groupId: String,
+    val userId: String,
     val groupName: String,
     val groupImageUri: String?,
     val memberIds: String // Store as comma-separated IDs or JSON if needed
