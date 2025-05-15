@@ -183,7 +183,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     fun fetchGroupMembers(groupId: String) {
         val fullGroupId = "group_$groupId"
         val membersRef = db.child("chats").child(fullGroupId).child("members")
-
         membersRef.get().addOnSuccessListener { snapshot ->
             val memberNames = snapshot.children.mapNotNull {
                 it.child("name").getValue(String::class.java)
@@ -196,9 +195,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
 
     fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
-
         chatListener?.let { messagesRef.removeEventListener(it) }
-
         chatListener = messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val list = mutableListOf<Message>()
@@ -214,7 +211,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 }
                 _messages.value = list.sortedByDescending { it.timestamp }
             }
-
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatVM", "Failed to fetch messages: ${error.message}")
             }
@@ -233,7 +229,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     else -> false
                 }
             }
-
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatVM", "Typing listener failed: ${error.message}")
             }
@@ -260,9 +255,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             db.removeEventListener(it)
         }
     }
+    
     fun removeFriendFromDatabase(currentUserId: String, friendId: String,friendDao: FriendDao) {
         val db = Firebase.database.reference
-
         db.child("users").child(currentUserId).child("friends")
             .orderByChild("friendId").equalTo(friendId)
             .addListenerForSingleValueEvent(object : ValueEventListener {

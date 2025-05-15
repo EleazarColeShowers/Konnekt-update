@@ -841,13 +841,21 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     onClick = {
                         friendToRemove?.let { friend ->
                             viewModel.removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
-                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
+//                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
 
                             Toast.makeText(
                                 context,
                                 "$usernameToRemove is no longer a friend",
                                 Toast.LENGTH_SHORT
                             ).show()
+
+                            viewModel.refreshCombinedChatList(
+                                currentUserId,
+                                friendList.filterNot { it.first.friendId == friend.friendId }, // updated list
+                                searchQuery,
+                                context,
+                                viewModel.groupChats.value
+                            )
                         }
                         showDialog = false
                     }
@@ -878,6 +886,14 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                                 "You left '${group.groupName}'",
                                 Toast.LENGTH_SHORT
                             ).show()
+
+                            viewModel.refreshCombinedChatList(
+                                currentUserId,
+                                friendList,
+                                searchQuery,
+                                context,
+                                viewModel.groupChats.value.filterNot { it.groupId == group.groupId }
+                            )
                         }
                         showGroupDialog = false
                     }
