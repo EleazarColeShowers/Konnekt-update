@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -19,10 +20,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
@@ -280,17 +283,19 @@ fun ProfileScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Spacer(modifier = Modifier.height(40.dp))
-            Image(
-                painter = rememberAsyncImagePainter(profileImage ?: R.drawable.nopfp),
+            Spacer(modifier = Modifier.height(20.dp))
+            AsyncImage(
+                model = profileImage ?: R.drawable.nopfp,
                 contentDescription = "Profile Picture",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(120.dp)
                     .clip(CircleShape)
-                    .background(Color.Gray)
+                    .border(3.dp, Color(0xFF2F9ECE), CircleShape)
+                    .background(Color.LightGray)
             )
-            Spacer(modifier = Modifier.height(16.dp))
 
+            Spacer(modifier = Modifier.height(16.dp))
             Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             if (subtitle.isNotEmpty()) {
                 Text(subtitle, fontSize = 16.sp, color = Color.Gray)
@@ -333,7 +338,6 @@ fun ProfileScreen(
 
             if (showFriendButton && onFriendButtonClick != null) {
                 Spacer(modifier = Modifier.height(20.dp))
-
                 Button(
                     onClick = onFriendButtonClick,
                     colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
@@ -347,72 +351,3 @@ fun ProfileScreen(
     }
 }
 
-
-//@Composable
-//fun ProfileScreen(
-//    title: String,
-//    subtitle: String,
-//    bio: String,
-//    profileImage: String?,
-//    showFriendButton: Boolean = false,
-//    isFriend: Boolean = false,
-//    onFriendButtonClick: (() -> Unit)? = null
-//) {
-//    Box(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .background(MaterialTheme.colorScheme.surface)
-//            .padding(16.dp),
-//        contentAlignment = Alignment.TopCenter
-//    ) {
-//        Column(
-//            horizontalAlignment = Alignment.CenterHorizontally,
-//            modifier = Modifier.fillMaxWidth()
-//        ) {
-//            Spacer(modifier = Modifier.height(40.dp))
-//            Image(
-//                painter = rememberAsyncImagePainter(profileImage ?: R.drawable.nopfp),
-//                contentDescription = "Profile Picture",
-//                modifier = Modifier
-//                    .size(120.dp)
-//                    .clip(CircleShape)
-//                    .background(Color.Gray)
-//            )
-//            Spacer(modifier = Modifier.height(16.dp))
-//
-//            Text(title, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-//            if (subtitle.isNotEmpty()) {
-//                Text(subtitle, fontSize = 16.sp, color = Color.Gray)
-//                Spacer(modifier = Modifier.height(8.dp))
-//            }
-//
-//            Card(
-//                modifier = Modifier
-//                    .fillMaxWidth(0.9f)
-//                    .padding(8.dp),
-//                shape = RoundedCornerShape(12.dp),
-//                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-//            ) {
-//                Text(
-//                    text = bio,
-//                    fontSize = 16.sp,
-//                    modifier = Modifier.padding(16.dp),
-//                    color = MaterialTheme.colorScheme.onSecondaryContainer
-//                )
-//            }
-//
-//            if (showFriendButton && onFriendButtonClick != null) {
-//                Spacer(modifier = Modifier.height(20.dp))
-//
-//                Button(
-//                    onClick = onFriendButtonClick,
-//                    colors = ButtonDefaults.buttonColors(if (isFriend) Color.Red else Color(0xFF2F9ECE)),
-//                    shape = RoundedCornerShape(12.dp),
-//                    modifier = Modifier.fillMaxWidth(0.8f)
-//                ) {
-//                    Text(if (isFriend) "Remove Friend" else "Add Friend", color = Color.White, fontSize = 18.sp)
-//                }
-//            }
-//        }
-//    }
-//}
