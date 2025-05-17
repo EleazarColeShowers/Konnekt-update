@@ -428,7 +428,8 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                                         val groupData = mapOf(
                                             "groupName" to groupName,
                                             "members" to members.associateWith { true },
-                                            "groupImage" to downloadUrl.toString()
+                                            "groupImage" to downloadUrl.toString(),
+                                            "adminId" to currentUserId
                                         )
 
                                         FirebaseDatabase.getInstance().getReference("chats")
@@ -463,7 +464,8 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                             val groupData = mapOf(
                                 "groupName" to groupName,
                                 "members" to members.associateWith { true },
-                                "groupImage" to null
+                                "groupImage" to null,
+                                "adminId" to currentUserId
                             )
 
                             FirebaseDatabase.getInstance().getReference("chats")

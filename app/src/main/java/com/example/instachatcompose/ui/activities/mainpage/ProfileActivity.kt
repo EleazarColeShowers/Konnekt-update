@@ -136,13 +136,13 @@ fun GroupProfileScreen(groupId: String) {
     val database = FirebaseDatabase.getInstance().reference
     val usersRef = database.child("users")
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-
     var groupName by remember { mutableStateOf("Loading group...") }
     var groupImage by remember { mutableStateOf<String?>(null) }
     var members by remember { mutableStateOf<List<String>>(emptyList()) }
-
     var showEditDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
+    var adminId by remember { mutableStateOf<String?>(null) }
+
 
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -162,25 +162,24 @@ fun GroupProfileScreen(groupId: String) {
         val groupSnapshot = database.child("chats").child("group_$groupId").get().await()
         groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
         groupImage = groupSnapshot.child("groupImage").getValue(String::class.java)
+        adminId = groupSnapshot.child("adminId").getValue(String::class.java)
+
 
         val memberIds = groupSnapshot.child("members").children.mapNotNull { it.key }
 
         val usernames = mutableListOf<String>()
         for (memberId in memberIds) {
             val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
-            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
+            var username = usernameSnapshot.getValue(String::class.java) ?: memberId
+            if (memberId == adminId) {
+                username += " - Admin"
+            }
             usernames.add(username)
         }
         members = usernames
     }
 
-//    val bioText = if (members.isEmpty()) {
-//        "No members found."
-//    } else {
-//        "Members: ${members.joinToString(", ")}"
-//    }
-    val bioText: String? = null // or add an optional description here if you like
-
+    val bioText: String? = null
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
