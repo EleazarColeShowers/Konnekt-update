@@ -1,6 +1,5 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -45,18 +44,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -98,7 +97,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
-import coil.compose.rememberImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.konnekt.Konnekt
@@ -118,28 +116,28 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
+import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
-import com.example.instachatcompose.ui.activities.data.FriendEntity
 import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
-import com.example.instachatcompose.ui.activities.data.UserEntity
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.math.absoluteValue
@@ -167,7 +165,6 @@ fun MessagePage() {
     val activity = LocalContext.current as? ComponentActivity
     val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
-    val currentUser = FirebaseAuth.getInstance().currentUser
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
@@ -338,7 +335,7 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(friendList, key = { (friend, _) ->
-                    if (friend.friendId.isNotBlank()) friend.friendId else UUID.randomUUID().toString()
+                    friend.friendId.ifBlank { UUID.randomUUID().toString() }
                 }) { (friend, details) ->
                     val friendId = friend.friendId
                     val username = details["username"] ?: "Unknown"
@@ -501,7 +498,6 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
     val requestCount = fetchReceivedRequestsCount(userId).value
-    var search by remember { mutableStateOf("") }
     Column {
         Row(
             modifier = Modifier
@@ -512,7 +508,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
             Row {
                 if (!profilePicUrl.isNullOrEmpty()) {
                     Image(
-                        painter = rememberImagePainter(data = profilePicUrl),
+                        painter = rememberAsyncImagePainter(model = profilePicUrl),
                         contentDescription = null,
                         modifier = Modifier
                             .size(31.dp)
@@ -636,10 +632,10 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
 
 @Composable
 fun fetchReceivedRequestsCount(userId: String): State<Int> {
-    val requestCount = remember { mutableStateOf(0) }
+    val requestCount = remember { mutableIntStateOf(0) }
     LaunchedEffect(userId) {
         loadReceivedRequestsWithDetails(userId) { receivedRequests ->
-            requestCount.value = receivedRequests.size
+            requestCount.intValue = receivedRequests.size
         }
     }
     return requestCount
@@ -757,7 +753,7 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
 @Composable
 fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
     val context = LocalContext.current
-    var sortedFriendList by remember { mutableStateOf(friendList) }
+    val sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
@@ -1027,7 +1023,7 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                 val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
                 if (messages.isNotEmpty()) {
                     val latestMessage = messages.last()
-                    val senderName = latestMessage.senderName ?: "Unknown"
+                    val senderName = latestMessage.senderName
                     lastMessage = "$senderName: ${latestMessage.text}"
 
                     hasUnreadMessages = messages.any {
@@ -1060,7 +1056,7 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                     ?.apply {
                         set("groupId", group.groupId)
                         set("groupName", group.groupName)
-                        set("groupImageUri", group.groupImage ?: "")
+                        set("groupImageUri", group.groupImage )
                         set("currentUserId", currentUserId)
                         set("chatId", group.groupId)
                         set("isGroupChat", true)
@@ -1125,14 +1121,23 @@ sealed class ChatItem {
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
+    // State and context
     var currentUsername by remember { mutableStateOf("") }
-    val messages by viewModel.messages
-        .map { it.sortedByDescending { msg -> msg.timestamp } }
-        .collectAsState(initial = emptyList())
-    val isFriendTyping by viewModel.isFriendTyping.collectAsState()
+    var messageText by remember { mutableStateOf("") }
+    var showMentionDropdown by remember { mutableStateOf(false) }
+    var mentionQuery by remember { mutableStateOf("") }
+    var cursorPosition by remember { mutableStateOf(0) }
+    var isChatOpen by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<Message?>(null) }
+    var editingMessageId by remember { mutableStateOf<String?>(null) }
+    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+
+    // Get chat information
     val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
-    val username= if (isGroupChat) {
+    val username = if (isGroupChat) {
         savedStateHandle?.get<String>("groupName") ?: "Group Chat"
     } else {
         savedStateHandle?.get<String>("username") ?: "Unknown"
@@ -1145,27 +1150,29 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val chatId = savedStateHandle?.get<String>("chatId") ?: ""
     val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
     val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
+
+    // Firebase references
     val db = Firebase.database.reference
     val messagesRef = db.child("chats").child(chatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
-    var messageText by remember { mutableStateOf("") }
 
-    var isChatOpen by remember { mutableStateOf(false) }
-    var replyingTo by remember { mutableStateOf<Message?>(null) }
-    var editingMessageId by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+    // ViewModel state
+    val messages by viewModel.messages
+        .map { it.sortedByDescending { msg -> msg.timestamp } }
+        .collectAsState(initial = emptyList())
+    val isFriendTyping by viewModel.isFriendTyping.collectAsState()
+    val filteredMembers = groupMembers.filter {
+        it.startsWith(mentionQuery, ignoreCase = true)
+    }
+
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
             currentUsername = name ?: "Unknown"
         }
     }
-
-
     LaunchedEffect(chatId, isChatOpen) {
         if (!isChatOpen) return@LaunchedEffect
-
         messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val messageList = mutableListOf<Message>()
@@ -1182,7 +1189,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
             }
-
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatScreen", "Failed to load messages: ${error.message}")
             }
@@ -1202,7 +1208,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             viewModel.observeTyping(chatId, receiverUserId)
         }
     }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1212,12 +1217,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-//                .clickable {
-//                    val intent = Intent(context, ProfileActivity::class.java).apply {
-//                        putExtra("friendId", receiverUserId)
-//                    }
-//                    context.startActivity(intent)
-//                },
                 .clickable {
                     val intent = Intent(context, ProfileActivity::class.java).apply {
                         if (isGroupChat) {
@@ -1290,7 +1289,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         onDeleteForSelf = { msg ->
                             val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
                             specificMessageRef.child("deletedFor").child(currentUserId).setValue(true)
-
                         },
                         onDeleteForEveryone = { msg ->
                             if (msg.id.isNotBlank()) {
@@ -1321,7 +1319,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         ) {
             replyingTo?.let { message ->
                 val senderName = if (message.senderId == currentUserId) "You" else if(isGroupChat) message.senderName
-                    else username // Assuming friendName is passed
+                    else username
                 val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
 
                 Row(
@@ -1369,7 +1367,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = message.text, // Show original message
+                                text = message.text,
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontSize = 14.sp
                             )
@@ -1391,6 +1389,16 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     value = messageText,
                     onValueChange = {
                         messageText = it
+                        val cursorIndex = it.length
+                        cursorPosition = cursorIndex
+                        val textUpToCursor = it.take(cursorIndex)
+                        val mentionMatch = Regex("""@(\w+)$""").find(textUpToCursor)
+                        if (mentionMatch != null) {
+                            mentionQuery = mentionMatch.groupValues[1]
+                            showMentionDropdown = true
+                        } else {
+                            showMentionDropdown = false
+                        }
                         typingRef.child(currentUserId).setValue(it.isNotEmpty())
                     },
                     modifier = Modifier
@@ -1406,6 +1414,25 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     shape = RoundedCornerShape(24.dp),
                     singleLine = true
                 )
+                DropdownMenu(
+                    expanded = showMentionDropdown && mentionQuery.isNotBlank(),
+                    onDismissRequest = { showMentionDropdown = false }
+                ) {
+                    filteredMembers.forEach { member ->
+                        DropdownMenuItem(
+                            text = { Text(member) },
+                            onClick = {
+                                // Replace "@mentionQuery" with "@member"
+                                val beforeCursor = messageText.take(cursorPosition)
+                                val afterCursor = messageText.drop(cursorPosition)
+                                val updatedBefore = beforeCursor.replace(Regex("@\\w+$"), "@$member ")
+                                messageText = updatedBefore + afterCursor
+                                showMentionDropdown = false
+                                mentionQuery = ""
+                            }
+                        )
+                    }
+                }
 
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
@@ -1440,9 +1467,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         }
                     }
                 })
-
                 {
-                    Icon(imageVector = Icons.Default.Send, contentDescription = "Send")
+                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
         }
@@ -1452,7 +1478,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) -> Unit, onEdit: (Message) -> Unit, onDeleteForSelf: (Message) -> Unit, onDeleteForEveryone: (Message) -> Unit, isGroupChat: Boolean= false) {
-    val isCurrentUser = message.senderId == currentUserId
     val senderColorMap = remember { mutableMapOf<String, Color>() }
     val senderColor = remember(message.senderId) {
         senderColorMap.getOrPut(message.senderId) {
@@ -1465,7 +1490,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
     val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
     val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
     var showMenu by remember { mutableStateOf(false) }
-    var rawOffsetX by remember { mutableStateOf(0f) }
+    var rawOffsetX by remember { mutableFloatStateOf(0f) }
     var hasReplied by remember { mutableStateOf(false) }
     val currentTime = System.currentTimeMillis()
     val isEditable = (currentTime - message.timestamp) < (10 * 60 * 1000)
@@ -1523,7 +1548,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
             Column {
                 if (isGroupChat && !isSentByUser) {
                     Text(
-                        text = message.senderName ?: "Unknown",
+                        text = message.senderName ,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = senderColor,
@@ -1538,7 +1563,20 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
-                Text(text = message.text, color = textColor)
+                val annotated = buildAnnotatedString {
+                    val regex = "@\\w+".toRegex()
+                    var currentIndex = 0
+                    regex.findAll(message.text).forEach { match ->
+                        append(message.text.substring(currentIndex, match.range.first))
+                        withStyle(SpanStyle(color = Color(0xFF2F9ECE))) {
+                            append(match.value)
+                        }
+                        currentIndex = match.range.last + 1
+                    }
+                    append(message.text.substring(currentIndex))
+                }
+
+                Text(text = annotated, color = textColor)
             }
         }
         Box(
@@ -1558,7 +1596,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         showMenu = false
                     }
                 )
-                Divider() // Line between menu items
+                HorizontalDivider()
                 if (isSentByUser) {
                     if (isEditable) {
                         DropdownMenuItem(
@@ -1568,7 +1606,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                                 showMenu = false
                             }
                         )
-                        Divider()
+                        HorizontalDivider()
                     }
                 }
                 DropdownMenuItem(
@@ -1578,7 +1616,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         showMenu = false
                     }
                 )
-                Divider()
+                HorizontalDivider()
                 if (isSentByUser && isDeletableForEveryone) {
                     DropdownMenuItem(
                         text = { Text("Delete for Everyone") },
@@ -1703,6 +1741,3 @@ fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveI
         )
     }
 }
-
-
-
