@@ -1119,6 +1119,8 @@ sealed class ChatItem {
     ) : ChatItem()
 }
 
+data class Mention(val username: String, val start: Int, val end: Int)
+
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     // State and context
@@ -1131,6 +1133,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+    var mentions by remember { mutableStateOf<List<Mention>>(emptyList()) }
 
     val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
@@ -1164,6 +1167,22 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val filteredMembers = groupMembers.filter {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
+
+    val onMessageTextChange: (String) -> Unit = { newText ->
+        messageText = newText
+        cursorPosition = newText.length
+
+        val lastAtIndex = newText.lastIndexOf("@", cursorPosition - 1)
+        if (lastAtIndex != -1 && (lastAtIndex == 0 || newText[lastAtIndex - 1].isWhitespace())) {
+            val query = newText.substring(lastAtIndex + 1, cursorPosition)
+            showMentionDropdown = true
+            mentionQuery = query
+        } else {
+            showMentionDropdown = false
+            mentionQuery = ""
+        }
+    }
+
 
 
     LaunchedEffect(currentUserId) {
@@ -1568,7 +1587,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                     var currentIndex = 0
                     regex.findAll(message.text).forEach { match ->
                         append(message.text.substring(currentIndex, match.range.first))
-                        withStyle(SpanStyle(color = Color(0xFF2F9ECE))) {
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)) {
                             append(match.value)
                         }
                         currentIndex = match.range.last + 1
@@ -1581,8 +1600,8 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
         }
         Box(
             modifier = Modifier
-                .shadow(8.dp, shape = RoundedCornerShape(16.dp)) // Shadow effect
-                .background(Color.White, shape = RoundedCornerShape(16.dp)) // Curved background
+                .shadow(8.dp, shape = RoundedCornerShape(16.dp))
+                .background(Color.White, shape = RoundedCornerShape(16.dp))
         ) {
             DropdownMenu(
                 expanded = showMenu,
