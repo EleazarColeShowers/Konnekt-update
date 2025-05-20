@@ -1156,7 +1156,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
     // Firebase references
     val db = Firebase.database.reference
-    val messagesRef = db.child("chats").child(chatId).child("messages")
+    val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
+    val messagesRef = db.child("chats").child(firebaseChatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
 
     // ViewModel state
@@ -1171,7 +1172,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val onMessageTextChange: (String) -> Unit = { newText ->
         messageText = newText
         cursorPosition = newText.length
-
         val lastAtIndex = newText.lastIndexOf("@", cursorPosition - 1)
         if (lastAtIndex != -1 && (lastAtIndex == 0 || newText[lastAtIndex - 1].isWhitespace())) {
             val query = newText.substring(lastAtIndex + 1, cursorPosition)
@@ -1182,8 +1182,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             mentionQuery = ""
         }
     }
-
-
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
@@ -1239,7 +1237,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 .clickable {
                     val intent = Intent(context, ProfileActivity::class.java).apply {
                         if (isGroupChat) {
-                            putExtra("groupId", chatId.removePrefix("group_")) // Assuming chatId starts with "group_"
+                            putExtra("groupId", chatId.removePrefix("group_"))
                         } else {
                             putExtra("friendId", receiverUserId)
                         }
