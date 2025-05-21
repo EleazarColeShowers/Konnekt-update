@@ -23,6 +23,7 @@ import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.google.firebase.Firebase
+import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
@@ -193,29 +194,46 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
-    fun observeMessages(chatId: String, currentUserId: String, isChatOpen: Boolean) {
+    fun observeMessages(context: Context, chatId: String, currentUserId: String, isChatOpen: Boolean) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
         chatListener?.let { messagesRef.removeEventListener(it) }
-        chatListener = messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val list = mutableListOf<Message>()
-                for (child in snapshot.children) {
-                    val message = child.getValue(Message::class.java)
-                    if (message != null) {
-                        if (message.deletedFor?.containsKey(currentUserId) == true) continue
-                        if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
-                            child.ref.child("seen").setValue(true)
-                        }
-                        list.add(message)
+
+        val messageList = mutableListOf<Message>()
+
+        chatListener = object : ChildEventListener, ValueEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val message = snapshot.getValue(Message::class.java)
+                if (message != null && message.deletedFor?.containsKey(currentUserId) != true) {
+                    if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
+                        snapshot.ref.child("seen").setValue(true)
                     }
+                    if (!isChatOpen && message.senderId != currentUserId && message.receiverId == currentUserId) {
+                        NotificationHelper.showNotification(
+                            context,
+                            title = "New message from ${message.senderName ?: "Someone"}",
+                            message = message.text
+                        )
+                    }
+                    messageList.add(0, message) // add to front for descending order
+                    _messages.value = messageList.sortedByDescending { it.timestamp }
                 }
-                _messages.value = list.sortedByDescending { it.timestamp }
             }
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onDataChange(snapshot: DataSnapshot) {
+                TODO("Not yet implemented")
+            }
+
             override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatVM", "Failed to fetch messages: ${error.message}")
+                Log.e("ChatVM", "ChildEventListener cancelled: ${error.message}")
             }
-        })
+        }
+
+        messagesRef.addChildEventListener(chatListener as ChildEventListener)
     }
+
 
     fun observeTyping(chatId: String, receiverId: String) {
         val typingRef = db.child("chats").child(chatId).child("typing").child(receiverId)

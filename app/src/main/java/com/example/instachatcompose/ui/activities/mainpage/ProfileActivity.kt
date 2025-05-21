@@ -143,7 +143,6 @@ fun GroupProfileScreen(groupId: String) {
     var newGroupName by remember { mutableStateOf("") }
     var adminId by remember { mutableStateOf<String?>(null) }
 
-
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->

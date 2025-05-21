@@ -1216,7 +1216,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         onDispose { isChatOpen = false }
     }
     LaunchedEffect(chatId) {
-        viewModel.observeMessages(chatId, currentUserId, isChatOpen = true)
+        viewModel.observeMessages( context, chatId, currentUserId, isChatOpen = false,)
         if (isGroupChat) {
             val groupChatList = fetchGroupChats(currentUserId)
             val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
