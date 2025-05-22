@@ -13,8 +13,6 @@ object NotificationHelper {
         val channelId = "chat_channel_id"
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        // Android 8+ requires notification channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId, "Chat Messages",
@@ -24,7 +22,7 @@ object NotificationHelper {
         }
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.notificationkonnekt) // your icon
+            .setSmallIcon(R.drawable.notificationkonnekt)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)

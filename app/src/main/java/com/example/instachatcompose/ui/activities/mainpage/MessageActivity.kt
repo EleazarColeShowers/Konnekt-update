@@ -1,7 +1,13 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import android.app.Activity
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -122,6 +128,9 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
@@ -130,6 +139,7 @@ import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
+import com.example.instachatcompose.ui.activities.data.NotificationHelper
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -180,7 +190,6 @@ fun MessagePage() {
         }
     }
 
-
     LaunchedEffect(userId) {
         viewModel.loadFriendsWithDetails(userId) { friends ->
             friendList.clear()
@@ -191,9 +200,11 @@ fun MessagePage() {
         viewModel.loadGroupChats(userId)
     }
 
+    LaunchedEffect(Unit) {
+        createNotificationChannel(context)
+    }
 
     val navController = rememberNavController()
-
     Scaffold(
         topBar = {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
@@ -225,6 +236,34 @@ fun MessagePage() {
 
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Button(
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+                            != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            activity?.let {
+                                ActivityCompat.requestPermissions(
+                                    it,
+                                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                    1
+                                )
+                            }
+                        } else {
+                            showNotification(context)
+                        }
+                    } else {
+                        showNotification(context)
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            ) {
+                Text("Send Test Notification")
+            }
+ 
+
             NavHost(
                 navController = navController,
                 startDestination = if (friendList.isEmpty()) "message" else "friends",
@@ -240,7 +279,6 @@ fun MessagePage() {
                         viewModel
                     )
                 }
-
                 composable("chat") {
 
                     ChatScreen(navController, viewModel)
@@ -253,6 +291,31 @@ fun MessagePage() {
     }
 }
 
+fun createNotificationChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+            "default_channel",
+            "Default Channel",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Used for default notifications"
+        }
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+    }
+}
+
+fun showNotification(context: Context) {
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val builder = NotificationCompat.Builder(context, "default_channel")
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle("Notification Title")
+        .setContentText("This is a Jetpack Compose notification.")
+        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+    notificationManager.notify(1, builder.build())
+}
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, onDismiss: () -> Unit) {
@@ -263,7 +326,7 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
     val selectedFriends = remember { mutableStateListOf<String>() }
     var groupImageUri by remember { mutableStateOf<Uri?>(null) }
     val db = Room.databaseBuilder(
-        context.applicationContext, // use applicationContext to avoid memory leaks
+        context.applicationContext,
         AppDatabase::class.java,
         "instachat_db"
     ).build()
@@ -293,9 +356,7 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                 label = { Text("Group Name") },
                 modifier = Modifier.fillMaxWidth()
             )
-
             Spacer(modifier = Modifier.height(12.dp))
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -320,7 +381,11 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                TextButton(onClick = { launcher.launch("image/*") }) {
+                TextButton(
+                    onClick = {
+                        launcher.launch("image/*")
+                    }
+                ) {
                     Text("Select Image")
                 }
             }
