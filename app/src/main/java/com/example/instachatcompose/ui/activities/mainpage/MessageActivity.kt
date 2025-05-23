@@ -1,5 +1,6 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import android.Manifest
 import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -182,6 +183,18 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
     val viewModel: ChatViewModel = viewModel()
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        Log.d("PermissionRequest", "Permission granted: $isGranted")
+        if (isGranted) {
+            showNotification(context)
+        } else {
+            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
 
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -239,22 +252,15 @@ fun MessagePage() {
             Button(
                 onClick = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
-                            != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            activity?.let {
-                                ActivityCompat.requestPermissions(
-                                    it,
-                                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                                    1
-                                )
-                            }
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         } else {
                             showNotification(context)
                         }
                     } else {
                         showNotification(context)
                     }
+
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -302,17 +308,22 @@ fun createNotificationChannel(context: Context) {
         }
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
+        Log.d("NotificationChannel", "Notification channel created")
     }
 }
 
 fun showNotification(context: Context) {
+    Log.d("Notification", "showNotification() called")
+
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     val builder = NotificationCompat.Builder(context, "default_channel")
         .setSmallIcon(android.R.drawable.ic_dialog_info)
         .setContentTitle("Notification Title")
         .setContentText("This is a Jetpack Compose notification.")
         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+
     notificationManager.notify(1, builder.build())
+    Log.d("Notification", "Notification sent")
 }
 
 
