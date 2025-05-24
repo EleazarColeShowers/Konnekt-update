@@ -286,7 +286,6 @@ fun MessagePage() {
                     )
                 }
                 composable("chat") {
-
                     ChatScreen(navController, viewModel)
                 }
             }
@@ -1236,7 +1235,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val messagesRef = db.child("chats").child(firebaseChatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
 
-    // ViewModel state
     val messages by viewModel.messages
         .map { it.sortedByDescending { msg -> msg.timestamp } }
         .collectAsState(initial = emptyList())
