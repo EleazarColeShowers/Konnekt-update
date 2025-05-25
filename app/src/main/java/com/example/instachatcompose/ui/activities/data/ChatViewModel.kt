@@ -3,14 +3,8 @@ package com.example.instachatcompose.ui.activities.data
 import android.app.Application
 import android.content.Context
 import android.util.Log
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.instachatcompose.ui.activities.KonnektApp.Companion.database
 import com.example.instachatcompose.ui.activities.mainpage.ChatItem
 import com.example.instachatcompose.ui.activities.mainpage.Friend
 import com.example.instachatcompose.ui.activities.mainpage.GroupChat
@@ -210,7 +204,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     if (!isChatOpen && message.senderId != currentUserId && message.receiverId == currentUserId) {
                         NotificationHelper.showNotification(
                             context,
-                            title = "New message from ${message.senderName ?: "Someone"}",
+                            title = "New message from ${message.senderName }",
                             message = message.text
                         )
                     }
@@ -314,8 +308,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
 
         friendsRef.get().addOnSuccessListener { snapshot ->
             if (snapshot.exists()) {
-                val friendPairs = mutableListOf<Pair<Friend, Map<String, String>>>()
-
                 val detailTasks = snapshot.children.map { friendSnapshot ->
                     val friendId = friendSnapshot.child("friendId").getValue(String::class.java) ?: ""
                     val timestamp = friendSnapshot.child("timestamp").getValue(Long::class.java) ?: 0L

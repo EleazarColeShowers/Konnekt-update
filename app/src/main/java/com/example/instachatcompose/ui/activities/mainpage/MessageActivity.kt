@@ -1,7 +1,6 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
 import android.Manifest
-import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -129,7 +128,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -140,7 +138,6 @@ import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
-import com.example.instachatcompose.ui.activities.data.NotificationHelper
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1194,7 +1191,6 @@ sealed class ChatItem {
     ) : ChatItem()
 }
 
-data class Mention(val username: String, val start: Int, val end: Int)
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
@@ -1203,12 +1199,11 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var messageText by remember { mutableStateOf("") }
     var showMentionDropdown by remember { mutableStateOf(false) }
     var mentionQuery by remember { mutableStateOf("") }
-    var cursorPosition by remember { mutableStateOf(0) }
+    var cursorPosition by remember { mutableIntStateOf(0) }
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
-    var mentions by remember { mutableStateOf<List<Mention>>(emptyList()) }
 
     val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
@@ -1229,7 +1224,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
     val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
 
-    // Firebase references
     val db = Firebase.database.reference
     val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
     val messagesRef = db.child("chats").child(firebaseChatId).child("messages")
@@ -1290,7 +1284,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         onDispose { isChatOpen = false }
     }
     LaunchedEffect(chatId) {
-        viewModel.observeMessages( context, chatId, currentUserId, isChatOpen = false,)
+        viewModel.observeMessages( context, chatId, currentUserId, isChatOpen = false)
         if (isGroupChat) {
             val groupChatList = fetchGroupChats(currentUserId)
             val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
@@ -1586,7 +1580,6 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
     val currentTime = System.currentTimeMillis()
     val isEditable = (currentTime - message.timestamp) < (10 * 60 * 1000)
     val isDeletableForEveryone = (currentTime - message.timestamp) < (24 * 60 * 60 * 1000)
-
 
     val offsetX by animateFloatAsState(
         targetValue = rawOffsetX,
