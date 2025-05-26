@@ -8,7 +8,6 @@ import androidx.core.app.NotificationCompat
 import com.example.instachatcompose.R
 
 object NotificationHelper {
-
     fun showNotification(context: Context, title: String, message: String) {
         val channelId = "chat_channel_id"
         val notificationManager =

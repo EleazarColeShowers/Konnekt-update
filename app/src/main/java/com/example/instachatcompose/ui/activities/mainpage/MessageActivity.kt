@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -246,26 +247,25 @@ fun MessagePage() {
 
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            Button(
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            showNotification(context)
-                        }
-                    } else {
-                        showNotification(context)
-                    }
-
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp)
-            ) {
-                Text("Send Test Notification")
-            }
- 
+//            Button(
+//                onClick = {
+//                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+//                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+//                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+//                        } else {
+//                            showNotification(context)
+//                        }
+//                    } else {
+//                        showNotification(context)
+//                    }
+//
+//                },
+//                modifier = Modifier
+//                    .align(Alignment.BottomCenter)
+//                    .padding(16.dp)
+//            ) {
+//                Text("Send Test Notification")
+//            }
 
             NavHost(
                 navController = navController,
@@ -1194,6 +1194,8 @@ sealed class ChatItem {
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
+   lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+
     // State and context
     var currentUsername by remember { mutableStateOf("") }
     var messageText by remember { mutableStateOf("") }
@@ -1284,7 +1286,11 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         onDispose { isChatOpen = false }
     }
     LaunchedEffect(chatId) {
-        viewModel.observeMessages( context, chatId, currentUserId, isChatOpen = false)
+        viewModel.observeMessages( context, chatId, currentUserId,
+            isChatOpen = true,
+            requestNotificationPermission = {
+            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        })
         if (isGroupChat) {
             val groupChatList = fetchGroupChats(currentUserId)
             val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }

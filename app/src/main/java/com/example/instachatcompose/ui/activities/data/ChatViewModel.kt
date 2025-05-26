@@ -1,8 +1,12 @@
 package com.example.instachatcompose.ui.activities.data
 
+import android.Manifest
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.instachatcompose.ui.activities.mainpage.ChatItem
@@ -188,7 +192,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
-    fun observeMessages(context: Context, chatId: String, currentUserId: String, isChatOpen: Boolean) {
+    fun observeMessages(
+        context: Context,
+        chatId: String,
+        currentUserId: String,
+        isChatOpen: Boolean,
+        requestNotificationPermission: () -> Unit
+    ) {
         val messagesRef = db.child("chats").child(chatId).child("messages")
         chatListener?.let { messagesRef.removeEventListener(it) }
 
@@ -201,14 +211,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
                         snapshot.ref.child("seen").setValue(true)
                     }
-                    if (!isChatOpen && message.senderId != currentUserId && message.receiverId == currentUserId) {
-                        NotificationHelper.showNotification(
-                            context,
-                            title = "New message from ${message.senderName }",
-                            message = message.text
-                        )
+
+                    if (message.senderId != currentUserId && message.receiverId == currentUserId) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.POST_NOTIFICATIONS
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                requestNotificationPermission()
+                            } else {
+                                NotificationHelper.showNotification(
+                                    context,
+                                    title = "New message from ${message.senderName}",
+                                    message = message.text
+                                )
+                            }
+                        } else {
+                            NotificationHelper.showNotification(
+                                context,
+                                title = "New message from ${message.senderName}",
+                                message = message.text
+                            )
+                        }
                     }
-                    messageList.add(0, message) // add to front for descending order
+
+                    messageList.add(0, message)
                     _messages.value = messageList.sortedByDescending { it.timestamp }
                 }
             }
@@ -217,7 +245,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             override fun onChildRemoved(snapshot: DataSnapshot) {}
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onDataChange(snapshot: DataSnapshot) {
-                TODO("Not yet implemented")
+                // no-op
             }
 
             override fun onCancelled(error: DatabaseError) {
