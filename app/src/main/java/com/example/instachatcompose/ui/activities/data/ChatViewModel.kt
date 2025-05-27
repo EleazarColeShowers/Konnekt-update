@@ -203,16 +203,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         chatListener?.let { messagesRef.removeEventListener(it) }
 
         val messageList = mutableListOf<Message>()
+        var hasLoadedInitialMessages = false
 
         chatListener = object : ChildEventListener, ValueEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                 val message = snapshot.getValue(Message::class.java)
+
                 if (message != null && message.deletedFor?.containsKey(currentUserId) != true) {
+                    // Mark as seen if chat is open
                     if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
                         snapshot.ref.child("seen").setValue(true)
                     }
 
-                    if (message.senderId != currentUserId && message.receiverId == currentUserId) {
+                    // Only notify AFTER initial messages have loaded
+                    if (hasLoadedInitialMessages &&
+                        message.senderId != currentUserId &&
+                        message.receiverId == currentUserId
+                    ) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             if (ContextCompat.checkSelfPermission(
                                     context,
@@ -240,21 +247,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     _messages.value = messageList.sortedByDescending { it.timestamp }
                 }
             }
-
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onChildRemoved(snapshot: DataSnapshot) {}
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onDataChange(snapshot: DataSnapshot) {
-                // no-op
+                hasLoadedInitialMessages = true
             }
-
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatVM", "ChildEventListener cancelled: ${error.message}")
             }
         }
 
         messagesRef.addChildEventListener(chatListener as ChildEventListener)
+        messagesRef.addListenerForSingleValueEvent(chatListener as ValueEventListener)
     }
+
 
 
     fun observeTyping(chatId: String, receiverId: String) {
