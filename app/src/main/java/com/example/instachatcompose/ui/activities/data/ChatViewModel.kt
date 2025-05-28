@@ -210,12 +210,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 val message = snapshot.getValue(Message::class.java)
 
                 if (message != null && message.deletedFor?.containsKey(currentUserId) != true) {
-                    // Mark as seen if chat is open
                     if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
                         snapshot.ref.child("seen").setValue(true)
                     }
 
-                    // Only notify AFTER initial messages have loaded
                     if (hasLoadedInitialMessages &&
                         message.senderId != currentUserId &&
                         message.receiverId == currentUserId
@@ -242,7 +240,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                             )
                         }
                     }
-
                     messageList.add(0, message)
                     _messages.value = messageList.sortedByDescending { it.timestamp }
                 }
@@ -257,7 +254,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 Log.e("ChatVM", "ChildEventListener cancelled: ${error.message}")
             }
         }
-
         messagesRef.addChildEventListener(chatListener as ChildEventListener)
         messagesRef.addListenerForSingleValueEvent(chatListener as ValueEventListener)
     }
