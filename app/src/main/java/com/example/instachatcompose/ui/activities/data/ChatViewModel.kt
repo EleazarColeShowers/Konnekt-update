@@ -39,9 +39,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     private var chatListener: ValueEventListener? = null
     private var typingListener: ValueEventListener? = null
     private val _currentUserName = MutableStateFlow<String?>(null)
-    val currentUserName: StateFlow<String?> = _currentUserName
     private val _groupMembers = MutableStateFlow<List<String>>(emptyList())
-    val groupMembers: StateFlow<List<String>> = _groupMembers
     private val _groupChats = MutableStateFlow<List<GroupChat>>(emptyList())
     val groupChats: StateFlow<List<GroupChat>> = _groupChats
     private val _combinedChatList = MutableStateFlow<List<ChatItem>>(emptyList())
@@ -155,6 +153,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 when (it) {
                     is ChatItem.FriendItem -> it.timestamp
                     is ChatItem.GroupItem -> it.timestamp
+
                 }
             }
         }

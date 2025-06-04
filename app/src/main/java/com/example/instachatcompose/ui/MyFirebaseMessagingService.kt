@@ -13,7 +13,6 @@ import com.google.firebase.messaging.RemoteMessage
 class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
-
         val notification = remoteMessage.notification
         if (notification != null) {
             showNotification(notification.title, notification.body)

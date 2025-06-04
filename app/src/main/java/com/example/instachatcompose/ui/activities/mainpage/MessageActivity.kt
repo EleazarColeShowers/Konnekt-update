@@ -221,7 +221,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                User(username = username, profilePicUrl = profilePicUrl, userId = userId, searchQuery = searchQuery, onSearchQueryChange = {searchQuery= it})
+                User(username = username, profilePicUrl = profilePicUrl, userId = userId, searchQuery = searchQuery, onSearchQueryChange = {searchQuery= it}, navController)
             }
         },
         bottomBar = {
@@ -247,26 +247,6 @@ fun MessagePage() {
 
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-//            Button(
-//                onClick = {
-//                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-//                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-//                            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-//                        } else {
-//                            showNotification(context)
-//                        }
-//                    } else {
-//                        showNotification(context)
-//                    }
-//
-//                },
-//                modifier = Modifier
-//                    .align(Alignment.BottomCenter)
-//                    .padding(16.dp)
-//            ) {
-//                Text("Send Test Notification")
-//            }
-
             NavHost(
                 navController = navController,
                 startDestination = if (friendList.isEmpty()) "message" else "friends",
@@ -285,6 +265,11 @@ fun MessagePage() {
                 composable("chat") {
                     ChatScreen(navController, viewModel)
                 }
+
+                composable("archives") {
+                    ArchiveScreen(navController = navController)
+                }
+
             }
         }
     }
@@ -322,6 +307,17 @@ fun showNotification(context: Context) {
     Log.d("Notification", "Notification sent")
 }
 
+@Composable
+fun ArchiveScreen(navController: NavController) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("Archived Messages", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        // TODO: Show archived messages here
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -565,7 +561,7 @@ object TempGroupIdHolder {
 }
 
 @Composable
-fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit) {
+fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit, navController: NavController) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
@@ -692,6 +688,9 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
             )
             Text(
                 text = "Archives(1)",
+                modifier = Modifier.clickable {
+                    navController.navigate("archives")
+                },
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
@@ -701,6 +700,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
         }
     }
 }
+
 
 @Composable
 fun fetchReceivedRequestsCount(userId: String): State<Int> {
