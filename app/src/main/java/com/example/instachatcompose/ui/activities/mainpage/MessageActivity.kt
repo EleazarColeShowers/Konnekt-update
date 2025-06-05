@@ -68,6 +68,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -833,6 +834,9 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val db = AppDatabase.getDatabase(context)
     val friendDao = db.friendDao()
     val combinedList by viewModel.combinedChatList.collectAsState()
+    var showActionDialog by remember { mutableStateOf(false) }
+    var selectedFriend by remember { mutableStateOf<Friend?>(null) }
+    var selectedGroup by remember { mutableStateOf<GroupChat?>(null) }
 
     LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {
         viewModel.refreshCombinedChatList(currentUserId, friendList, searchQuery, context, viewModel.groupChats.value)
@@ -851,12 +855,11 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-                                friendToRemove = friend
-                                showDialog = true
+                                selectedFriend = friend
+                                selectedGroup = null
+                                showActionDialog = true
                                 false
-                            } else {
-                                true
-                            }
+                            } else true
                         }
                     )
 
@@ -870,15 +873,16 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                 }
 
                 is ChatItem.GroupItem -> {
+                    val group = item.group
+
                     val groupDismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-                                groupToLeave = item.group
-                                showGroupDialog = true
+                                selectedGroup = group
+                                selectedFriend = null
+                                showActionDialog = true
                                 false
-                            } else {
-                                true
-                            }
+                            } else true
                         }
                     )
 
@@ -886,14 +890,9 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         state = groupDismissState,
                         backgroundContent = {},
                         content = {
-                            GroupAsFriendRow(
-                                group = item.group,
-                                navController = navController,
-                                currentUserId = currentUserId
-                            )
+                            GroupAsFriendRow(group, navController, currentUserId)
                         }
                     )
-
                 }
             }
         }
@@ -978,6 +977,77 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
         )
     }
+    if (showActionDialog) {
+        val isFriend = selectedFriend != null
+        val name = selectedFriend?.let { friend ->
+            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username")
+        } ?: selectedGroup?.groupName ?: "this chat"
+
+        AlertDialog(
+            onDismissRequest = { showActionDialog = false },
+            title = { Text("Choose Action") },
+            text = {
+                Column {
+                    Text("What would you like to do with $name?")
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (isFriend) {
+                        Button(
+                            onClick = {
+                                selectedFriend?.let {
+                                    Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
+                                }
+                                showActionDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Archive") }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = {
+                                friendToRemove = selectedFriend
+                                showDialog = true
+                                showActionDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Remove Friend") }
+                    } else {
+                        Button(
+                            onClick = {
+                                selectedGroup?.let {
+                                    Toast.makeText(context, "${it.groupName} archived", Toast.LENGTH_SHORT).show()
+                                }
+                                showActionDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Archive") }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = {
+                                groupToLeave = selectedGroup
+                                showGroupDialog = true
+                                showActionDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Leave Group") }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedButton(
+                        onClick = { showActionDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Cancel") }
+                }
+            },
+            confirmButton = {} // Leave this empty to prevent horizontal alignment
+        )
+
+    }
+
 }
 
 @Composable
