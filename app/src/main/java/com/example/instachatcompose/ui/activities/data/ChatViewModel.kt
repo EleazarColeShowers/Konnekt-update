@@ -46,6 +46,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val combinedChatList: StateFlow<List<ChatItem>> = _combinedChatList
     private val appDatabase = AppDatabase.getDatabase(application)
     private val groupDao = appDatabase.groupDao()
+    private val _archivedFriends = MutableStateFlow<List<Friend>>(emptyList())
+    val archivedFriends: StateFlow<List<Friend>> = _archivedFriends
+    private val _archivedGroups = MutableStateFlow<List<GroupChat>>(emptyList())
+    val archivedGroups: StateFlow<List<GroupChat>> = _archivedGroups
+
 
     fun refreshCombinedChatList(
         currentUserId: String,
@@ -159,6 +164,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
+    fun archiveFriend(friend: Friend) {
+        _archivedFriends.value += friend
+    }
+
+    fun archiveGroup(group: GroupChat) {
+        _archivedGroups.value += group
+    }
+
+//    fun unarchiveFriend(friend: Friend) {
+//        _archivedFriends.update { it - friend }
+//        refreshCombinedChatListAfterUnarchive()
+//    }
+//
+//    fun unarchiveGroup(group: GroupChat) {
+//        _archivedGroups.update { it - group }
+//        refreshCombinedChatListAfterUnarchive()
+//    }
 
     fun loadGroupChats(currentUserId: String) {
         viewModelScope.launch {

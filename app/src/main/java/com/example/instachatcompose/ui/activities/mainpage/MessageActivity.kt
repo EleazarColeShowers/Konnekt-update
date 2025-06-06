@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -131,7 +130,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
@@ -268,7 +266,7 @@ fun MessagePage() {
                 }
 
                 composable("archives") {
-                    ArchiveScreen(navController = navController)
+                    ArchiveScreen(navController = navController, viewModel, currentUserId = userId)
                 }
 
             }
@@ -308,17 +306,72 @@ fun showNotification(context: Context) {
     Log.d("Notification", "Notification sent")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArchiveScreen(navController: NavController) {
+fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, currentUserId: String) {
+    val archivedFriends by viewModel.archivedFriends.collectAsState()
+    val archivedGroups by viewModel.archivedGroups.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
         Text("Archived Messages", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        // TODO: Show archived messages here
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (archivedFriends.isEmpty() && archivedGroups.isEmpty()) {
+            Text("No archived chats")
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(archivedFriends) { friend ->
+                    // Optionally allow unarchive action via swipe
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+//                                viewModel.unarchiveFriend(friend)
+                                false
+                            } else true
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {},
+                        content = {
+                            FriendRow(friend, mapOf("username" to (friend.friendId ?: "")), navController, currentUserId)
+                        }
+                    )
+                }
+
+                items(archivedGroups) { group ->
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = {
+                            if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
+//                                viewModel.unarchiveGroup(group)
+                                false
+                            } else true
+                        }
+                    )
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {},
+                        content = {
+                            GroupAsFriendRow(group, navController, currentUserId)
+                        }
+                    )
+                }
+            }
+        }
     }
 }
+
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -688,7 +741,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
                 ),
             )
             Text(
-                text = "Archives(1)",
+                text = "Archives()",
                 modifier = Modifier.clickable {
                     navController.navigate("archives")
                 },
@@ -837,9 +890,14 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var showActionDialog by remember { mutableStateOf(false) }
     var selectedFriend by remember { mutableStateOf<Friend?>(null) }
     var selectedGroup by remember { mutableStateOf<GroupChat?>(null) }
+    val archivedFriends by viewModel.archivedFriends.collectAsState()
+    val archivedGroups by viewModel.archivedGroups.collectAsState()
 
-    LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {
-        viewModel.refreshCombinedChatList(currentUserId, friendList, searchQuery, context, viewModel.groupChats.value)
+    LaunchedEffect(searchQuery, friendList, viewModel.groupChats, archivedFriends, archivedGroups) {
+        val filteredFriends = friendList.filterNot { archivedFriends.contains(it.first) }
+        val filteredGroups = viewModel.groupChats.value.filterNot { archivedGroups.contains(it) }
+
+        viewModel.refreshCombinedChatList(currentUserId, filteredFriends, searchQuery, context, filteredGroups)
     }
 
     LazyColumn(
@@ -997,6 +1055,10 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                                 selectedFriend?.let {
                                     Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
                                 }
+                                selectedFriend?.let {
+                                    viewModel.archiveFriend(it)
+                                    Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
+                                }
                                 showActionDialog = false
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -1016,6 +1078,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         Button(
                             onClick = {
                                 selectedGroup?.let {
+                                    viewModel.archiveGroup(it)
                                     Toast.makeText(context, "${it.groupName} archived", Toast.LENGTH_SHORT).show()
                                 }
                                 showActionDialog = false
@@ -1043,7 +1106,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     ) { Text("Cancel") }
                 }
             },
-            confirmButton = {} // Leave this empty to prevent horizontal alignment
+            confirmButton = {}
         )
 
     }
