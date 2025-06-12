@@ -245,7 +245,9 @@ fun MessagePage() {
         }
 
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)) {
             NavHost(
                 navController = navController,
                 startDestination = if (friendList.isEmpty()) "message" else "friends",
@@ -1261,7 +1263,7 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                     ?.apply {
                         set("groupId", group.groupId)
                         set("groupName", group.groupName)
-                        set("groupImageUri", group.groupImage )
+                        set("groupImageUri", group.groupImage)
                         set("currentUserId", currentUserId)
                         set("chatId", group.groupId)
                         set("isGroupChat", true)
@@ -1646,7 +1648,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         DropdownMenuItem(
                             text = { Text(member) },
                             onClick = {
-                                // Replace "@mentionQuery" with "@member"
                                 val beforeCursor = messageText.take(cursorPosition)
                                 val afterCursor = messageText.drop(cursorPosition)
                                 val updatedBefore = beforeCursor.replace(Regex("@\\w+$"), "@$member ")
@@ -1658,6 +1659,11 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
 
+                IconButton(
+                    onClick= {}
+                ){
+                    Icon(painter = painterResource(id = R.drawable.nopfpcam), contentDescription = "camera", modifier = Modifier.size(24.dp))
+                }
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
                         if (editingMessageId != null) {

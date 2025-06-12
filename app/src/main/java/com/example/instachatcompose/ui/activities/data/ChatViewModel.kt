@@ -27,6 +27,7 @@ import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -172,15 +173,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         _archivedGroups.value += group
     }
 
-//    fun unarchiveFriend(friend: Friend) {
-//        _archivedFriends.update { it - friend }
+    fun unarchiveFriend(friend: Friend) {
+        _archivedFriends.update { it - friend }
 //        refreshCombinedChatListAfterUnarchive()
-//    }
-//
-//    fun unarchiveGroup(group: GroupChat) {
-//        _archivedGroups.update { it - group }
+    }
+
+    fun unarchiveGroup(group: GroupChat) {
+        _archivedGroups.update { it - group }
 //        refreshCombinedChatListAfterUnarchive()
-//    }
+    }
 
     fun loadGroupChats(currentUserId: String) {
         viewModelScope.launch {
