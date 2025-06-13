@@ -52,6 +52,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     private val _archivedGroups = MutableStateFlow<List<GroupChat>>(emptyList())
     val archivedGroups: StateFlow<List<GroupChat>> = _archivedGroups
 
+    private val _archivedItems = MutableStateFlow<List<Any>>(emptyList()) // Unified list
+    val archivedItems: StateFlow<List<Any>> = _archivedItems
+
 
     fun refreshCombinedChatList(
         currentUserId: String,
@@ -164,6 +167,54 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             }
         }
     }
+
+    fun archiveItem(currentUserId: String, item: Any) {
+        _archivedItems.value += item
+
+        val archiveRef = FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(currentUserId)
+            .child("archive")
+
+        when (item) {
+            is Friend -> {
+                val friendMap = mapOf(
+                    "friendId" to item.friendId,
+                    "timestamp" to item.timestamp
+                )
+                archiveRef.child("friends").child(item.friendId).setValue(friendMap)
+            }
+
+            is GroupChat -> {
+                val groupMap = mapOf(
+                    "groupId" to item.groupId,
+                    "groupName" to item.groupName,
+                    "groupImage" to item.groupImage
+                )
+                archiveRef.child("groups").child(item.groupId).setValue(groupMap)
+            }
+        }
+    }
+
+    fun unarchiveItem(currentUserId: String, item: Any) {
+        _archivedItems.update { it - item }
+
+        val archiveRef = FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(currentUserId)
+            .child("archive")
+
+        when (item) {
+            is Friend -> {
+                archiveRef.child("friends").child(item.friendId).removeValue()
+            }
+            is GroupChat -> {
+                archiveRef.child("groups").child(item.groupId).removeValue()
+            }
+        }
+    }
+
+
 
     fun archiveFriend(friend: Friend) {
         _archivedFriends.value += friend
@@ -448,6 +499,38 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     fun removeGroupChat(groupId: String) {
         _groupChats.value = _groupChats.value.filterNot { it.groupId == groupId }
     }
+
+    fun fetchArchivedChats(currentUserId: String) {
+        val archiveRef = FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(currentUserId)
+            .child("archive")
+
+        // Fetch friends
+        archiveRef.child("friends").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val friends = snapshot.children.mapNotNull { it.getValue(Friend::class.java) }
+                _archivedFriends.value = friends
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // Handle error
+            }
+        })
+
+        // Fetch groups
+        archiveRef.child("groups").addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val groups = snapshot.children.mapNotNull { it.getValue(GroupChat::class.java) }
+                _archivedGroups.value = groups
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // Handle error
+            }
+        })
+    }
+
 
 }
 

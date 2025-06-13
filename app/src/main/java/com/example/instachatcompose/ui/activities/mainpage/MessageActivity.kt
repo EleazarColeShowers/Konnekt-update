@@ -314,6 +314,11 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
     val archivedFriends by viewModel.archivedFriends.collectAsState()
     val archivedGroups by viewModel.archivedGroups.collectAsState()
 
+    // 🔽 Fetch data once when the screen first composes
+    LaunchedEffect(Unit) {
+        viewModel.fetchArchivedChats(currentUserId)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -331,11 +336,10 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(archivedFriends) { friend ->
-                    // Optionally allow unarchive action via swipe
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-//                                viewModel.unarchiveFriend(friend)
+                                viewModel.unarchiveItem(currentUserId, friend)
                                 false
                             } else true
                         }
@@ -354,7 +358,7 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-//                                viewModel.unarchiveGroup(group)
+                                viewModel.unarchiveItem(currentUserId, group)
                                 false
                             } else true
                         }
@@ -372,7 +376,6 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
         }
     }
 }
-
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -821,7 +824,7 @@ data class Friend(
 data class GroupChat(
     val groupId: String,
     val groupName: String,
-    val members: List<String>,
+    val members: List<String> = emptyList(),
     val groupImage: String = ""
 )
 
@@ -896,8 +899,12 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val archivedGroups by viewModel.archivedGroups.collectAsState()
 
     LaunchedEffect(searchQuery, friendList, viewModel.groupChats, archivedFriends, archivedGroups) {
-        val filteredFriends = friendList.filterNot { archivedFriends.contains(it.first) }
-        val filteredGroups = viewModel.groupChats.value.filterNot { archivedGroups.contains(it) }
+        val filteredFriends = friendList.filterNot { friend ->
+            viewModel.archivedItems.value.contains(friend)
+        }
+        val filteredGroups = viewModel.groupChats.value.filterNot { group ->
+            viewModel.archivedItems.value.contains(group)
+        }
 
         viewModel.refreshCombinedChatList(currentUserId, filteredFriends, searchQuery, context, filteredGroups)
     }
@@ -1055,9 +1062,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         Button(
                             onClick = {
                                 selectedFriend?.let {
-                                    Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
-                                }
-                                selectedFriend?.let {
                                     viewModel.archiveFriend(it)
                                     Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
                                 }
@@ -1080,7 +1084,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         Button(
                             onClick = {
                                 selectedGroup?.let {
-                                    viewModel.archiveGroup(it)
+                                    viewModel.archiveItem(currentUserId, it)
                                     Toast.makeText(context, "${it.groupName} archived", Toast.LENGTH_SHORT).show()
                                 }
                                 showActionDialog = false
@@ -1322,7 +1326,8 @@ sealed class ChatItem {
 
     data class GroupItem(
         val group: GroupChat,
-        val timestamp: Long
+        val timestamp: Long,
+
     ) : ChatItem()
 }
 
