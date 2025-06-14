@@ -349,7 +349,7 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                         state = dismissState,
                         backgroundContent = {},
                         content = {
-                            FriendRow(friend, mapOf("username" to (friend.friendId ?: "")), navController, currentUserId)
+                            FriendRowWithDetails(friend, navController, currentUserId, viewModel)
                         }
                     )
                 }
@@ -374,6 +374,28 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                 }
             }
         }
+    }
+}
+
+@Composable
+fun FriendRowWithDetails(
+    friend: Friend,
+    navController: NavController,
+    currentUserId: String,
+    viewModel: ChatViewModel
+) {
+    var details by remember { mutableStateOf<Map<String, String>?>(null) }
+
+    LaunchedEffect(friend.friendId) {
+        viewModel.getFriendDetails(friend.friendId) {
+            details = it
+        }
+    }
+
+    if (details != null) {
+        FriendRow(friend, details!!, navController, currentUserId)
+    } else {
+        Text("Loading ${friend.friendId}...")
     }
 }
 
@@ -826,7 +848,11 @@ data class GroupChat(
     val groupName: String,
     val members: List<String> = emptyList(),
     val groupImage: String = ""
-)
+){
+    // Firebase needs this
+    constructor() : this("", "", emptyList())
+}
+
 
 suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
     val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
@@ -1062,7 +1088,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         Button(
                             onClick = {
                                 selectedFriend?.let {
-                                    viewModel.archiveFriend(it)
+                                    viewModel.archiveItem(currentUserId, it)
                                     Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
                                 }
                                 showActionDialog = false

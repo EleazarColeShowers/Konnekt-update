@@ -214,26 +214,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
-
-
-    fun archiveFriend(friend: Friend) {
-        _archivedFriends.value += friend
-    }
-
-    fun archiveGroup(group: GroupChat) {
-        _archivedGroups.value += group
-    }
-
-    fun unarchiveFriend(friend: Friend) {
-        _archivedFriends.update { it - friend }
-//        refreshCombinedChatListAfterUnarchive()
-    }
-
-    fun unarchiveGroup(group: GroupChat) {
-        _archivedGroups.update { it - group }
-//        refreshCombinedChatListAfterUnarchive()
-    }
-
     fun loadGroupChats(currentUserId: String) {
         viewModelScope.launch {
             val groups = fetchGroupChats(currentUserId)
@@ -529,6 +509,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 // Handle error
             }
         })
+    }
+
+    fun getFriendDetails(friendId: String, onResult: (Map<String, String>) -> Unit) {
+        FirebaseDatabase.getInstance().getReference("users")
+            .child(friendId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val username = snapshot.child("username").getValue(String::class.java) ?: "Unknown"
+                    val profileImageUri = snapshot.child("profileImageUri").getValue(String::class.java) ?: ""
+                    onResult(mapOf("username" to username, "profileImageUri" to profileImageUri))
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    onResult(mapOf("username" to "Unknown", "profileImageUri" to ""))
+                }
+            })
     }
 
 
