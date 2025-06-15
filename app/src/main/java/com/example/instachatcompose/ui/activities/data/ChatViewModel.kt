@@ -39,8 +39,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val isFriendTyping: StateFlow<Boolean> = _isFriendTyping
     private var chatListener: ValueEventListener? = null
     private var typingListener: ValueEventListener? = null
-    private val _currentUserName = MutableStateFlow<String?>(null)
-    private val _groupMembers = MutableStateFlow<List<String>>(emptyList())
     private val _groupChats = MutableStateFlow<List<GroupChat>>(emptyList())
     val groupChats: StateFlow<List<GroupChat>> = _groupChats
     private val _combinedChatList = MutableStateFlow<List<ChatItem>>(emptyList())
@@ -51,9 +49,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val archivedFriends: StateFlow<List<Friend>> = _archivedFriends
     private val _archivedGroups = MutableStateFlow<List<GroupChat>>(emptyList())
     val archivedGroups: StateFlow<List<GroupChat>> = _archivedGroups
-
     private val _archivedItems = MutableStateFlow<List<Any>>(emptyList()) // Unified list
     val archivedItems: StateFlow<List<Any>> = _archivedItems
+    private val _isArchiveInitialized = MutableStateFlow(false)
+    val isArchiveInitialized: StateFlow<Boolean> = _isArchiveInitialized
 
 
     fun refreshCombinedChatList(
@@ -68,6 +67,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             val userDao = db.userDao()
             val friendDao = db.friendDao()
             val groupDao = db.groupDao()
+
+            val archivedFriendIds = _archivedFriends.value.map { it.friendId }.toSet()
+            val archivedGroupIds = _archivedGroups.value.map { it.groupId }.toSet()
+
 
             val isOnline = try {
                 val socket = java.net.Socket()
@@ -123,6 +126,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 }
             }.filter {
                 it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
+            } .filter {
+                it.friend.friendId !in archivedFriendIds
             }
 
             val groupItems = if (isOnline && groupChats.isNotEmpty()) {
@@ -156,6 +161,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 }
             }.filter {
                 it.group.groupName.contains(searchQuery, ignoreCase = true)
+            }.filter {
+                it.group.groupId !in archivedGroupIds
             }
 
             _combinedChatList.value = (friendItems + groupItems).sortedByDescending {
@@ -229,19 +236,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }.addOnFailureListener { error ->
             Log.e("ChatVM", "Failed to fetch username: ${error.message}")
             onResult(null)
-        }
-    }
-
-    fun fetchGroupMembers(groupId: String) {
-        val fullGroupId = "group_$groupId"
-        val membersRef = db.child("chats").child(fullGroupId).child("members")
-        membersRef.get().addOnSuccessListener { snapshot ->
-            val memberNames = snapshot.children.mapNotNull {
-                it.child("name").getValue(String::class.java)
-            }
-            _groupMembers.value = memberNames
-        }.addOnFailureListener { error ->
-            Log.e("ChatVM", "Failed to fetch group members: ${error.message}")
         }
     }
 
@@ -329,17 +323,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 Log.e("ChatVM", "Typing listener failed: ${error.message}")
             }
         })
-    }
-
-    fun sendMessage(chatId: String, message: Message) {
-        val messagesRef = db.child("chats").child(chatId).child("messages")
-        val newMessageRef = messagesRef.push()
-        newMessageRef.setValue(message)
-    }
-
-    fun setTypingStatus(chatId: String, currentUserId: String, isTyping: Boolean) {
-        val typingRef = db.child("chats").child(chatId).child("typing").child(currentUserId)
-        typingRef.setValue(isTyping)
     }
 
     override fun onCleared() {
@@ -486,7 +469,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             .child(currentUserId)
             .child("archive")
 
-        // Fetch friends
         archiveRef.child("friends").addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val friends = snapshot.children.mapNotNull { it.getValue(Friend::class.java) }
@@ -494,11 +476,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                // Handle error
             }
         })
 
-        // Fetch groups
         archiveRef.child("groups").addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = snapshot.children.mapNotNull { it.getValue(GroupChat::class.java) }
@@ -506,7 +486,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             }
 
             override fun onCancelled(error: DatabaseError) {
-                // Handle error
             }
         })
     }
@@ -526,8 +505,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 }
             })
     }
-
-
 }
 
 data class Message(

@@ -349,7 +349,9 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                         state = dismissState,
                         backgroundContent = {},
                         content = {
-                            FriendRowWithDetails(friend, navController, currentUserId, viewModel)
+//                            FriendRowWithDetails(friend, navController, currentUserId, viewModel)
+                            FriendRow(friend, navController, currentUserId, viewModel)
+
                         }
                     )
                 }
@@ -376,29 +378,6 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
         }
     }
 }
-
-@Composable
-fun FriendRowWithDetails(
-    friend: Friend,
-    navController: NavController,
-    currentUserId: String,
-    viewModel: ChatViewModel
-) {
-    var details by remember { mutableStateOf<Map<String, String>?>(null) }
-
-    LaunchedEffect(friend.friendId) {
-        viewModel.getFriendDetails(friend.friendId) {
-            details = it
-        }
-    }
-
-    if (details != null) {
-        FriendRow(friend, details!!, navController, currentUserId)
-    } else {
-        Text("Loading ${friend.friendId}...")
-    }
-}
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -960,7 +939,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         state = dismissState,
                         backgroundContent = {},
                         content = {
-                            FriendRow(friend, details, navController, currentUserId)
+                            FriendRow(friend, navController, currentUserId, viewModel)
                         }
                     )
                 }
@@ -1146,9 +1125,16 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
 }
 
 @Composable
-fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavController, currentUserId: String) {
-    val friendUsername = details["username"] ?: "Unknown"
-    val friendProfileUri = details["profileImageUri"] ?: ""
+fun FriendRow(
+    friend: Friend,
+    navController: NavController,
+    currentUserId: String,
+    viewModel: ChatViewModel
+) {
+    var details by remember { mutableStateOf<Map<String, String>?>(null) }
+
+    val friendUsername = details?.get("username") ?: "Unknown"
+    val friendProfileUri = details?.get("profileImageUri") ?: ""
 
     val chatId = if (currentUserId < friend.friendId) {
         "${currentUserId}_${friend.friendId}"
@@ -1158,6 +1144,14 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
 
     var lastMessage by remember { mutableStateOf("Loading...") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
+
+
+    LaunchedEffect(friend.friendId) {
+        viewModel.getFriendDetails(friend.friendId) {
+            details = it
+        }
+    }
+
 
     DisposableEffect(chatId) {
         val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
