@@ -53,7 +53,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val archivedItems: StateFlow<List<Any>> = _archivedItems
     private val _isArchiveInitialized = MutableStateFlow(false)
     val isArchiveInitialized: StateFlow<Boolean> = _isArchiveInitialized
-
+    private val _isLoadingArchive = MutableStateFlow(true)
+    val isLoadingArchive: StateFlow<Boolean> = _isLoadingArchive
 
     fun refreshCombinedChatList(
         currentUserId: String,
@@ -67,11 +68,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             val userDao = db.userDao()
             val friendDao = db.friendDao()
             val groupDao = db.groupDao()
-
             val archivedFriendIds = _archivedFriends.value.map { it.friendId }.toSet()
             val archivedGroupIds = _archivedGroups.value.map { it.groupId }.toSet()
-
-
             val isOnline = try {
                 val socket = java.net.Socket()
                 socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
@@ -464,31 +462,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     }
 
     fun fetchArchivedChats(currentUserId: String) {
+        _isArchiveInitialized.value = false // ✅ THIS LINE is missing in your current version
+        _isLoadingArchive.value = true
+        var friendsDone = false
+        var groupsDone = false
+        fun checkIfFinished() {
+            if (friendsDone && groupsDone) {
+                _archivedItems.value = _archivedFriends.value + _archivedGroups.value
+                _isArchiveInitialized.value = true
+                _isLoadingArchive.value = false
+            }
+        }
+
         val archiveRef = FirebaseDatabase.getInstance()
             .getReference("users")
             .child(currentUserId)
             .child("archive")
 
+
         archiveRef.child("friends").addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val friends = snapshot.children.mapNotNull { it.getValue(Friend::class.java) }
                 _archivedFriends.value = friends
+                friendsDone = true
+                checkIfFinished()
             }
 
-            override fun onCancelled(error: DatabaseError) {
-            }
+            override fun onCancelled(error: DatabaseError) {}
         })
 
         archiveRef.child("groups").addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = snapshot.children.mapNotNull { it.getValue(GroupChat::class.java) }
                 _archivedGroups.value = groups
+                groupsDone = true
+                checkIfFinished()
             }
 
-            override fun onCancelled(error: DatabaseError) {
-            }
+            override fun onCancelled(error: DatabaseError) {}
         })
+
     }
+
 
     fun getFriendDetails(friendId: String, onResult: (Map<String, String>) -> Unit) {
         FirebaseDatabase.getInstance().getReference("users")

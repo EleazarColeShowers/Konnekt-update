@@ -57,6 +57,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -142,6 +143,8 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -349,7 +352,6 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                         state = dismissState,
                         backgroundContent = {},
                         content = {
-//                            FriendRowWithDetails(friend, navController, currentUserId, viewModel)
                             FriendRow(friend, navController, currentUserId, viewModel)
 
                         }
@@ -365,7 +367,6 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                             } else true
                         }
                     )
-
                     SwipeToDismissBox(
                         state = dismissState,
                         backgroundContent = {},
@@ -902,23 +903,39 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var selectedGroup by remember { mutableStateOf<GroupChat?>(null) }
     val archivedFriends by viewModel.archivedFriends.collectAsState()
     val archivedGroups by viewModel.archivedGroups.collectAsState()
+    val isArchiveInitialized by viewModel.isArchiveInitialized.collectAsState()
+    val groupChats by viewModel.groupChats.collectAsState()
 
-    LaunchedEffect(searchQuery, friendList, viewModel.groupChats, archivedFriends, archivedGroups) {
-        val filteredFriends = friendList.filterNot { friend ->
-            viewModel.archivedItems.value.contains(friend)
-        }
-        val filteredGroups = viewModel.groupChats.value.filterNot { group ->
-            viewModel.archivedItems.value.contains(group)
-        }
 
-        viewModel.refreshCombinedChatList(currentUserId, filteredFriends, searchQuery, context, filteredGroups)
+
+    LaunchedEffect(Unit) {
+        viewModel.fetchArchivedChats(currentUserId)
+    }
+
+    LaunchedEffect(isArchiveInitialized) {
+        if (isArchiveInitialized) {
+            viewModel.refreshCombinedChatList(
+                currentUserId,
+                friendList,
+                searchQuery,
+                context,
+                groupChats
+            )
+        }
+    }
+
+    val filteredCombinedList = combinedList.filter {
+        when (it) {
+            is ChatItem.FriendItem -> !archivedFriends.any { archived -> archived.friendId == it.friend.friendId }
+            is ChatItem.GroupItem -> !archivedGroups.any { archived -> archived.groupId == it.group.groupId }
+        }
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(combinedList) { item ->
+        items(filteredCombinedList) { item ->
             when (item) {
                 is ChatItem.FriendItem -> {
                     val friend = item.friend
@@ -1096,9 +1113,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Archive") }
-
                         Spacer(modifier = Modifier.height(8.dp))
-
                         Button(
                             onClick = {
                                 groupToLeave = selectedGroup
@@ -1108,9 +1123,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Leave Group") }
                     }
-
                     Spacer(modifier = Modifier.height(16.dp))
-
                     OutlinedButton(
                         onClick = { showActionDialog = false },
                         modifier = Modifier.fillMaxWidth()
@@ -1119,9 +1132,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             },
             confirmButton = {}
         )
-
     }
-
 }
 
 @Composable
@@ -1399,19 +1410,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
 
-    val onMessageTextChange: (String) -> Unit = { newText ->
-        messageText = newText
-        cursorPosition = newText.length
-        val lastAtIndex = newText.lastIndexOf("@", cursorPosition - 1)
-        if (lastAtIndex != -1 && (lastAtIndex == 0 || newText[lastAtIndex - 1].isWhitespace())) {
-            val query = newText.substring(lastAtIndex + 1, cursorPosition)
-            showMentionDropdown = true
-            mentionQuery = query
-        } else {
-            showMentionDropdown = false
-            mentionQuery = ""
-        }
-    }
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
@@ -1972,7 +1970,6 @@ fun BottomAppBar(username: String,profilePic: Uri) {
 @Composable
 fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveIcon: Int, onClick: () -> Unit) {
     Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
-
     Column(
         modifier = Modifier
             .width(68.dp)
