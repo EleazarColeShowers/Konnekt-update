@@ -316,8 +316,15 @@ fun showNotification(context: Context) {
 fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, currentUserId: String) {
     val archivedFriends by viewModel.archivedFriends.collectAsState()
     val archivedGroups by viewModel.archivedGroups.collectAsState()
+    val context= LocalContext.current
+    val db = AppDatabase.getDatabase(context)
+    val friendDao = db.friendDao()
+    var showUnarchiveDialog by remember { mutableStateOf(false) }
+    var selectedArchivedFriend by remember { mutableStateOf<Friend?>(null) }
+    var selectedArchivedGroup by remember { mutableStateOf<GroupChat?>(null) }
+    var showRemoveFriendDialog by remember { mutableStateOf(false) }
+    var showLeaveGroupDialog by remember { mutableStateOf(false) }
 
-    // 🔽 Fetch data once when the screen first composes
     LaunchedEffect(Unit) {
         viewModel.fetchArchivedChats(currentUserId)
     }
@@ -342,8 +349,11 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-                                viewModel.unarchiveItem(currentUserId, friend)
+                                selectedArchivedFriend = friend
+                                selectedArchivedGroup = null
+                                showUnarchiveDialog = true
                                 false
+
                             } else true
                         }
                     )
@@ -362,8 +372,11 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
-                                viewModel.unarchiveItem(currentUserId, group)
+                                selectedArchivedGroup = group
+                                selectedArchivedFriend = null
+                                showUnarchiveDialog = true
                                 false
+
                             } else true
                         }
                     )
@@ -378,6 +391,111 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
             }
         }
     }
+    if (showUnarchiveDialog) {
+        val name = selectedArchivedFriend?.let {
+            "this friend" // You can enhance this by using a proper name from viewModel if needed
+        } ?: selectedArchivedGroup?.groupName ?: "this chat"
+
+        AlertDialog(
+            onDismissRequest = { showUnarchiveDialog = false },
+            title = { Text("Chat Options") },
+            text = {
+                Column {
+                    Text("What would you like to do with $name?")
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            selectedArchivedFriend?.let {
+                                viewModel.unarchiveItem(currentUserId, it)
+                            }
+                            selectedArchivedGroup?.let {
+                                viewModel.unarchiveItem(currentUserId, it)
+                            }
+                            showUnarchiveDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Unarchive")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (selectedArchivedFriend != null) {
+                        Button(
+                            onClick = {
+                                showRemoveFriendDialog = true
+                                showUnarchiveDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Remove Friend") }
+                    } else if (selectedArchivedGroup != null) {
+                        Button(
+                            onClick = {
+                                showLeaveGroupDialog = true
+                                showUnarchiveDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Leave Group") }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { showUnarchiveDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Cancel") }
+                }
+            },
+            confirmButton = {}, // Leave empty because buttons are already handled inside `text`
+            dismissButton = {}
+        )
+    }
+    if (showRemoveFriendDialog && selectedArchivedFriend != null) {
+        AlertDialog(
+            onDismissRequest = { showRemoveFriendDialog = false },
+            title = { Text("Remove Friend") },
+            text = { Text("Are you sure you want to remove this friend?") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.removeFriendFromDatabase(currentUserId, selectedArchivedFriend!!.friendId, friendDao)
+                    Toast.makeText(context, "Friend removed", Toast.LENGTH_SHORT).show()
+                    showRemoveFriendDialog = false
+                }) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showRemoveFriendDialog = false }) {
+                    Text("No")
+                }
+            }
+        )
+    }
+    if (showLeaveGroupDialog && selectedArchivedGroup != null) {
+        AlertDialog(
+            onDismissRequest = { showLeaveGroupDialog = false },
+            title = { Text("Leave Group") },
+            text = { Text("Are you sure you want to leave '${selectedArchivedGroup!!.groupName}'?") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.leaveGroup(currentUserId, selectedArchivedGroup!!.groupId)
+                    viewModel.removeGroupChat(selectedArchivedGroup!!.groupId)
+                    Toast.makeText(context, "You left the group", Toast.LENGTH_SHORT).show()
+                    showLeaveGroupDialog = false
+                }) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showLeaveGroupDialog = false }) {
+                    Text("No")
+                }
+            }
+        )
+    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
