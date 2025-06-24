@@ -57,7 +57,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -143,8 +142,6 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -183,17 +180,17 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
     val viewModel: ChatViewModel = viewModel()
-    val requestPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        Log.d("PermissionRequest", "Permission granted: $isGranted")
-        if (isGranted) {
-            showNotification(context)
-        } else {
-            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
-        }
-    }
-
+//    val requestPermissionLauncher = rememberLauncherForActivityResult(
+//        contract = ActivityResultContracts.RequestPermission()
+//    ) { isGranted: Boolean ->
+//        Log.d("PermissionRequest", "Permission granted: $isGranted")
+//        if (isGranted) {
+//            showNotification(context)
+//        } else {
+//            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
+//        }
+//    }
+//
 
 
     LaunchedEffect(userId) {
@@ -324,6 +321,9 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
     var selectedArchivedGroup by remember { mutableStateOf<GroupChat?>(null) }
     var showRemoveFriendDialog by remember { mutableStateOf(false) }
     var showLeaveGroupDialog by remember { mutableStateOf(false) }
+    var friendToRemove by remember { mutableStateOf<Friend?>(null) }
+    var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
+
 
     LaunchedEffect(Unit) {
         viewModel.fetchArchivedChats(currentUserId)
@@ -391,110 +391,55 @@ fun ArchiveScreen(navController: NavController, viewModel: ChatViewModel, curren
             }
         }
     }
-    if (showUnarchiveDialog) {
-        val name = selectedArchivedFriend?.let {
-            "this friend" // You can enhance this by using a proper name from viewModel if needed
-        } ?: selectedArchivedGroup?.groupName ?: "this chat"
+    ChatOptionsDialog(
+        showDialog = showUnarchiveDialog,
+        onDismiss = {
+            showUnarchiveDialog = false
+        },
+        currentUserId = currentUserId,
+        isArchived = true,
+        friend = selectedArchivedFriend,
+        group = selectedArchivedGroup,
+        context = context,
+        viewModel = viewModel,
+        onConfirmRemoveFriend = {
+            friendToRemove = selectedArchivedFriend
+            showRemoveFriendDialog = true
+        },
+        onConfirmLeaveGroup = {
+            groupToLeave = selectedArchivedGroup
+            showLeaveGroupDialog = true
+        }
+    )
 
-        AlertDialog(
-            onDismissRequest = { showUnarchiveDialog = false },
-            title = { Text("Chat Options") },
-            text = {
-                Column {
-                    Text("What would you like to do with $name?")
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            selectedArchivedFriend?.let {
-                                viewModel.unarchiveItem(currentUserId, it)
-                            }
-                            selectedArchivedGroup?.let {
-                                viewModel.unarchiveItem(currentUserId, it)
-                            }
-                            showUnarchiveDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Unarchive")
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (selectedArchivedFriend != null) {
-                        Button(
-                            onClick = {
-                                showRemoveFriendDialog = true
-                                showUnarchiveDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Remove Friend") }
-                    } else if (selectedArchivedGroup != null) {
-                        Button(
-                            onClick = {
-                                showLeaveGroupDialog = true
-                                showUnarchiveDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Leave Group") }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = { showUnarchiveDialog = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Cancel") }
-                }
-            },
-            confirmButton = {}, // Leave empty because buttons are already handled inside `text`
-            dismissButton = {}
-        )
-    }
-    if (showRemoveFriendDialog && selectedArchivedFriend != null) {
-        AlertDialog(
-            onDismissRequest = { showRemoveFriendDialog = false },
-            title = { Text("Remove Friend") },
-            text = { Text("Are you sure you want to remove this friend?") },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.removeFriendFromDatabase(currentUserId, selectedArchivedFriend!!.friendId, friendDao)
-                    Toast.makeText(context, "Friend removed", Toast.LENGTH_SHORT).show()
-                    showRemoveFriendDialog = false
-                }) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showRemoveFriendDialog = false }) {
-                    Text("No")
-                }
+    ConfirmDialog(
+        show = showRemoveFriendDialog && friendToRemove != null,
+        title = "Remove Friend",
+        message = "Are you sure you want to remove this friend?",
+        onDismiss = { showRemoveFriendDialog = false },
+        onConfirm = {
+            friendToRemove?.let {
+                viewModel.removeFriendFromDatabase(currentUserId, it.friendId, friendDao)
+                Toast.makeText(context, "Friend removed", Toast.LENGTH_SHORT).show()
             }
-        )
-    }
-    if (showLeaveGroupDialog && selectedArchivedGroup != null) {
-        AlertDialog(
-            onDismissRequest = { showLeaveGroupDialog = false },
-            title = { Text("Leave Group") },
-            text = { Text("Are you sure you want to leave '${selectedArchivedGroup!!.groupName}'?") },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.leaveGroup(currentUserId, selectedArchivedGroup!!.groupId)
-                    viewModel.removeGroupChat(selectedArchivedGroup!!.groupId)
-                    Toast.makeText(context, "You left the group", Toast.LENGTH_SHORT).show()
-                    showLeaveGroupDialog = false
-                }) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showLeaveGroupDialog = false }) {
-                    Text("No")
-                }
+            showRemoveFriendDialog = false
+        }
+    )
+
+    ConfirmDialog(
+        show = showLeaveGroupDialog && groupToLeave != null,
+        title = "Leave Group",
+        message = "Are you sure you want to leave '${groupToLeave?.groupName}'?",
+        onDismiss = { showLeaveGroupDialog = false },
+        onConfirm = {
+            groupToLeave?.let {
+                viewModel.leaveGroup(currentUserId, it.groupId)
+                viewModel.removeGroupChat(it.groupId)
+                Toast.makeText(context, "You left the group", Toast.LENGTH_SHORT).show()
             }
-        )
-    }
+            showLeaveGroupDialog = false
+        }
+    )
 
 }
 
@@ -1008,7 +953,6 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
 @Composable
 fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
     val context = LocalContext.current
-    val sortedFriendList by remember { mutableStateOf(friendList) }
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
@@ -1024,12 +968,9 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val isArchiveInitialized by viewModel.isArchiveInitialized.collectAsState()
     val groupChats by viewModel.groupChats.collectAsState()
 
-
-
     LaunchedEffect(Unit) {
         viewModel.fetchArchivedChats(currentUserId)
     }
-
     LaunchedEffect(isArchiveInitialized) {
         if (isArchiveInitialized) {
             viewModel.refreshCombinedChatList(
@@ -1041,7 +982,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             )
         }
     }
-
     val filteredCombinedList = combinedList.filter {
         when (it) {
             is ChatItem.FriendItem -> !archivedFriends.any { archived -> archived.friendId == it.friend.friendId }
@@ -1057,7 +997,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             when (item) {
                 is ChatItem.FriendItem -> {
                     val friend = item.friend
-                    val details = item.details
+//                    val details = item.details
 
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
@@ -1069,7 +1009,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             } else true
                         }
                     )
-
                     SwipeToDismissBox(
                         state = dismissState,
                         backgroundContent = {},
@@ -1078,10 +1017,8 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         }
                     )
                 }
-
                 is ChatItem.GroupItem -> {
                     val group = item.group
-
                     val groupDismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
                             if (it == SwipeToDismissBoxValue.EndToStart || it == SwipeToDismissBoxValue.StartToEnd) {
@@ -1092,7 +1029,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             } else true
                         }
                     )
-
                     SwipeToDismissBox(
                         state = groupDismissState,
                         backgroundContent = {},
@@ -1104,154 +1040,192 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             }
         }
     }
-    if (showDialog && friendToRemove != null) {
-        val usernameToRemove = friendToRemove?.let { friend ->
-            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
+
+    ChatOptionsDialog(
+        showDialog = showActionDialog,
+        onDismiss = { showActionDialog = false },
+        currentUserId = currentUserId,
+        isArchived = false,
+        friend = selectedFriend,
+        group = selectedGroup,
+        context = context,
+        viewModel = viewModel,
+        onConfirmRemoveFriend = {
+            friendToRemove = selectedFriend
+            showDialog = true
+        },
+        onConfirmLeaveGroup = {
+            groupToLeave = selectedGroup
+            showGroupDialog = true
         }
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Remove Friend") },
-            text = { Text("Are you sure you want to remove $usernameToRemove as a friend?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        friendToRemove?.let { friend ->
-                            viewModel.removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
-//                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
+    )
 
-                            Toast.makeText(
-                                context,
-                                "$usernameToRemove is no longer a friend",
-                                Toast.LENGTH_SHORT
-                            ).show()
+    ConfirmDialog(
+        show = showDialog && friendToRemove != null,
+        title = "Remove Friend",
+        message = "Are you sure you want to remove this friend?",
+        onDismiss = { showDialog = false },
+        onConfirm = {
+            friendToRemove?.let { friend ->
+                viewModel.removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
+                Toast.makeText(
+                    context,
+                    "Friend removed",
+                    Toast.LENGTH_SHORT
+                ).show()
 
-                            viewModel.refreshCombinedChatList(
-                                currentUserId,
-                                friendList.filterNot { it.first.friendId == friend.friendId }, // updated list
-                                searchQuery,
-                                context,
-                                viewModel.groupChats.value
-                            )
-                        }
-                        showDialog = false
-                    }
-                ) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showDialog = false }) {
-                    Text("No")
-                }
+                viewModel.refreshCombinedChatList(
+                    currentUserId,
+                    friendList.filterNot { it.first.friendId == friend.friendId },
+                    searchQuery,
+                    context,
+                    viewModel.groupChats.value
+                )
             }
-        )
-    }
-    if (showGroupDialog && groupToLeave != null) {
-        AlertDialog(
-            onDismissRequest = { showGroupDialog = false },
-            title = { Text("Leave Group") },
-            text = { Text("Are you sure you want to leave '${groupToLeave?.groupName}'?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        groupToLeave?.let { group ->
-                            viewModel.leaveGroup(currentUserId, group.groupId)
-                            viewModel.removeGroupChat(group.groupId)
-                            Toast.makeText(
-                                context,
-                                "You left '${group.groupName}'",
-                                Toast.LENGTH_SHORT
-                            ).show()
+            showDialog = false
+        }
+    )
 
-                            viewModel.refreshCombinedChatList(
-                                currentUserId,
-                                friendList,
-                                searchQuery,
-                                context,
-                                viewModel.groupChats.value.filterNot { it.groupId == group.groupId }
-                            )
-                        }
-                        showGroupDialog = false
-                    }
-                ) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                Button(onClick = { showGroupDialog = false }) {
-                    Text("No")
-                }
+    ConfirmDialog(
+        show = showGroupDialog && groupToLeave != null,
+        title = "Leave Group",
+        message = "Are you sure you want to leave '${groupToLeave?.groupName}'?",
+        onDismiss = { showGroupDialog = false },
+        onConfirm = {
+            groupToLeave?.let { group ->
+                viewModel.leaveGroup(currentUserId, group.groupId)
+                viewModel.removeGroupChat(group.groupId)
+                Toast.makeText(
+                    context,
+                    "You left '${group.groupName}'",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                viewModel.refreshCombinedChatList(
+                    currentUserId,
+                    friendList,
+                    searchQuery,
+                    context,
+                    viewModel.groupChats.value.filterNot { it.groupId == group.groupId }
+                )
             }
-        )
-    }
-    if (showActionDialog) {
-        val isFriend = selectedFriend != null
-        val name = selectedFriend?.let { friend ->
-            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username")
-        } ?: selectedGroup?.groupName ?: "this chat"
+            showGroupDialog = false
+        }
+    )
 
-        AlertDialog(
-            onDismissRequest = { showActionDialog = false },
-            title = { Text("Choose Action") },
-            text = {
-                Column {
-                    Text("What would you like to do with $name?")
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (isFriend) {
-                        Button(
-                            onClick = {
-                                selectedFriend?.let {
-                                    viewModel.archiveItem(currentUserId, it)
-                                    Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
-                                }
-                                showActionDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Archive") }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Button(
-                            onClick = {
-                                friendToRemove = selectedFriend
-                                showDialog = true
-                                showActionDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Remove Friend") }
-                    } else {
-                        Button(
-                            onClick = {
-                                selectedGroup?.let {
-                                    viewModel.archiveItem(currentUserId, it)
-                                    Toast.makeText(context, "${it.groupName} archived", Toast.LENGTH_SHORT).show()
-                                }
-                                showActionDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Archive") }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                groupToLeave = selectedGroup
-                                showGroupDialog = true
-                                showActionDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Leave Group") }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(
-                        onClick = { showActionDialog = false },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Cancel") }
-                }
-            },
-            confirmButton = {}
-        )
-    }
 }
+
+@Composable
+fun ChatOptionsDialog(
+    showDialog: Boolean,
+    onDismiss: () -> Unit,
+    currentUserId: String,
+    isArchived: Boolean,
+    friend: Friend? = null,
+    group: GroupChat? = null,
+    context: Context,
+    viewModel: ChatViewModel,
+    onConfirmRemoveFriend: () -> Unit,
+    onConfirmLeaveGroup: () -> Unit
+) {
+    if (!showDialog) return
+
+    val isFriend = friend != null
+    val name = group?.groupName ?: "this friend"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Chat Options") },
+        text = {
+            Column {
+                Text("What would you like to do with $name?")
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (isArchived) {
+                            friend?.let { viewModel.unarchiveItem(currentUserId, it) }
+                            group?.let { viewModel.unarchiveItem(currentUserId, it) }
+                        } else {
+                            friend?.let {
+                                viewModel.archiveItem(currentUserId, it)
+                                Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
+                            }
+                            group?.let {
+                                viewModel.archiveItem(currentUserId, it)
+                                Toast.makeText(context, "$name archived", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isArchived) "Unarchive" else "Archive")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (isFriend) {
+                    Button(
+                        onClick = {
+                            onConfirmRemoveFriend()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Remove Friend") }
+                } else {
+                    Button(
+                        onClick = {
+                            onConfirmLeaveGroup()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Leave Group") }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Cancel") }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+
+@Composable
+fun ConfirmDialog(
+    show: Boolean,
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    if (!show) return
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            Button(onClick = {
+                onConfirm()
+                onDismiss()
+            }) {
+                Text("Yes")
+            }
+        },
+        dismissButton = {
+            Button(onClick = onDismiss) {
+                Text("No")
+            }
+        }
+    )
+}
+
 
 @Composable
 fun FriendRow(
