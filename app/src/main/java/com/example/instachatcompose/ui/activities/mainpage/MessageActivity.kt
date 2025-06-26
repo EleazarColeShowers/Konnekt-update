@@ -180,18 +180,6 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
     val viewModel: ChatViewModel = viewModel()
-//    val requestPermissionLauncher = rememberLauncherForActivityResult(
-//        contract = ActivityResultContracts.RequestPermission()
-//    ) { isGranted: Boolean ->
-//        Log.d("PermissionRequest", "Permission granted: $isGranted")
-//        if (isGranted) {
-//            showNotification(context)
-//        } else {
-//            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
-//        }
-//    }
-//
-
 
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -233,7 +221,7 @@ fun MessagePage() {
         floatingActionButton = {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
-            if (currentRoute == "friends") {
+            if (currentRoute == "friends" || currentRoute == "archives") {
                 FloatingActionButton(
                     onClick = { showCreateGroupDialog = true },
                     modifier = Modifier.padding(bottom = 6.dp),
@@ -294,19 +282,19 @@ fun createNotificationChannel(context: Context) {
     }
 }
 
-fun showNotification(context: Context) {
-    Log.d("Notification", "showNotification() called")
-
-    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val builder = NotificationCompat.Builder(context, "default_channel")
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
-        .setContentTitle("Notification Title")
-        .setContentText("This is a Jetpack Compose notification.")
-        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-
-    notificationManager.notify(1, builder.build())
-    Log.d("Notification", "Notification sent")
-}
+//fun showNotification(context: Context) {
+//    Log.d("Notification", "showNotification() called")
+//
+//    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+//    val builder = NotificationCompat.Builder(context, "default_channel")
+//        .setSmallIcon(android.R.drawable.ic_dialog_info)
+//        .setContentTitle("Notification Title")
+//        .setContentText("This is a Jetpack Compose notification.")
+//        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+//
+//    notificationManager.notify(1, builder.build())
+//    Log.d("Notification", "Notification sent")
+//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
