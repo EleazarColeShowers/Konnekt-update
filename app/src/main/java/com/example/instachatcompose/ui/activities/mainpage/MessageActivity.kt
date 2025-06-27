@@ -129,12 +129,13 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
+import com.example.instachatcompose.ui.activities.components.SharedBottomAppBar
 import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.BottomAppBarItem
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
@@ -215,7 +216,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                BottomAppBar(username = username, profilePic = profilePic)
+                SharedBottomAppBar(username = username, profilePic = profilePic, startingTab = BottomAppBarItem.Messages)
             }
         },
         floatingActionButton = {
@@ -281,20 +282,6 @@ fun createNotificationChannel(context: Context) {
         Log.d("NotificationChannel", "Notification channel created")
     }
 }
-
-//fun showNotification(context: Context) {
-//    Log.d("Notification", "showNotification() called")
-//
-//    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-//    val builder = NotificationCompat.Builder(context, "default_channel")
-//        .setSmallIcon(android.R.drawable.ic_dialog_info)
-//        .setContentTitle("Notification Title")
-//        .setContentText("This is a Jetpack Compose notification.")
-//        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-//
-//    notificationManager.notify(1, builder.build())
-//    Log.d("Notification", "Notification sent")
-//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1990,85 +1977,5 @@ suspend fun fetchLastMessageTimestamp(chatId: String): Long {
     } catch (e: Exception) {
         Log.e("fetchLastMessageTimestamp", "Error fetching timestamp", e)
         0L
-    }
-}
-
-enum class BottomAppBarItem {
-    Messages,
-    Calls,
-    AddFriends
-}
-
-@Composable
-fun BottomAppBar(username: String,profilePic: Uri) {
-    var activeItem by remember { mutableStateOf(BottomAppBarItem.Messages) }
-    val context= LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BottomAppBarItem(
-            label = "Messages",
-            isActive = activeItem == BottomAppBarItem.Messages,
-            activeIcon = R.drawable.bottombar_activemessagespage,
-            passiveIcon = R.drawable.bottombar_passivemessagespage,
-            onClick = {
-                activeItem = BottomAppBarItem.Messages
-                val intent = Intent(context, MessageActivity::class.java)
-                context.startActivity(intent)
-            }
-        )
-
-        BottomAppBarItem(
-            label = "Call Logs",
-            isActive = activeItem == BottomAppBarItem.Calls,
-            activeIcon = R.drawable.bottombar_activecallspage,
-            passiveIcon = R.drawable.bottombar_passivecallspage,
-            onClick = { activeItem = BottomAppBarItem.Calls }
-        )
-
-        BottomAppBarItem(
-            label = "Konnekt",
-            isActive = activeItem == BottomAppBarItem.AddFriends,
-            activeIcon = R.drawable.bottombar_activeaddfriendspage,
-            passiveIcon = R.drawable.bottombar_passiveaddfriendspage,
-            onClick = {
-                activeItem = BottomAppBarItem.AddFriends
-                val intent = Intent(context, Konnekt::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-    }
-}
-
-@Composable
-fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveIcon: Int, onClick: () -> Unit) {
-    Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
-    Column(
-        modifier = Modifier
-            .width(68.dp)
-            .height(52.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
-            contentDescription = label,
-            modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
-        )
     }
 }

@@ -67,8 +67,9 @@ import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
+import com.example.instachatcompose.ui.activities.components.SharedBottomAppBar
+import com.example.instachatcompose.ui.activities.data.BottomAppBarItem
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
-import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.mainpage.ProfileActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
@@ -144,11 +145,7 @@ fun AddFriendsPage() {
                 .fillMaxWidth()
                 .height(80.dp)
         ) {
-            BottomAppBarKonnekt(
-                username = username,
-                profilePic = profilePic,
-
-            )
+            SharedBottomAppBar(username = username, profilePic = profilePic, startingTab = BottomAppBarItem.AddFriends)
         }
     }
 }
@@ -774,93 +771,5 @@ private fun handleFriendRequest(
             .addOnFailureListener { e ->
                 Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
             }
-    }
-}
-
-
-enum class BottomAppBarItem {
-    Messages,
-    Calls,
-    AddFriends
-}
-
-@Composable
-fun BottomAppBarKonnekt(username: String,profilePic: Uri) {
-    var activeItem by remember { mutableStateOf(BottomAppBarItem.AddFriends) }
-    val context= LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BottomAppBarItemKonnekt(
-            label = "Messages",
-            isActive = activeItem == BottomAppBarItem.Messages,
-            activeIcon = R.drawable.bottombar_activemessagespage,
-            passiveIcon = R.drawable.bottombar_passivemessagespage,
-            onClick = {
-                activeItem = BottomAppBarItem.Messages
-                val intent = Intent(context, MessageActivity::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-        BottomAppBarItemKonnekt(
-            label = "Call Logs",
-            isActive = activeItem == BottomAppBarItem.Calls,
-            activeIcon = R.drawable.bottombar_activecallspage,
-            passiveIcon = R.drawable.bottombar_passivecallspage,
-            onClick = { activeItem = BottomAppBarItem.Calls }
-        )
-        BottomAppBarItemKonnekt(
-            label = "Konnekt",
-            isActive = activeItem == BottomAppBarItem.AddFriends,
-            activeIcon = R.drawable.bottombar_activeaddfriendspage,
-            passiveIcon = R.drawable.bottombar_passiveaddfriendspage,
-            onClick = {
-                activeItem = BottomAppBarItem.AddFriends
-                val intent = Intent(context, Konnekt::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-    }
-}
-
-@Composable
-fun BottomAppBarItemKonnekt(
-    label: String,
-    isActive: Boolean,
-    activeIcon: Int,
-    passiveIcon: Int,
-    onClick: () -> Unit
-) {
-    Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
-
-    Column(
-        modifier = Modifier
-            .width(68.dp)
-            .height(52.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
-            contentDescription = label,
-            modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
-        )
     }
 }
