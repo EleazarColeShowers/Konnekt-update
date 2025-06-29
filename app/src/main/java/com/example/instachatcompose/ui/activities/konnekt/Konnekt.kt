@@ -748,14 +748,12 @@ private fun handleFriendRequest(
     } else {
         Log.d("FriendRequest", "Declined: Removing request from both received and sent requests")
 
-        // Delete from received_requests
         db.child("users").child(userId).child("received_requests")
             .orderByChild("from").equalTo(request.from)
             .get()
             .addOnSuccessListener { snapshot ->
                 snapshot.children.forEach { it.ref.removeValue() }
 
-                // Delete from sent_requests
                 db.child("users").child(request.from).child("sent_requests")
                     .orderByChild("to").equalTo(userId)
                     .get()

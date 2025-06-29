@@ -143,6 +143,7 @@ import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -181,6 +182,8 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context= LocalContext.current
     val viewModel: ChatViewModel = viewModel()
+    var isLoading by remember { mutableStateOf(true) }
+
 
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -201,6 +204,9 @@ fun MessagePage() {
 
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
+        delay(3000)
+//        startDestination = if (friendList.isEmpty()) "message" else "friends"
+        isLoading = false
     }
 
     val navController = rememberNavController()
