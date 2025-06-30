@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import com.example.instachatcompose.ui.activities.data.ChatManager
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
+import com.example.instachatcompose.ui.activities.data.KeystoreHelper
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
@@ -17,11 +18,11 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 
-
 class MainActivity : ComponentActivity() {
-    private val splashScreenDuration = 3000L
+    private val splashScreenDuration = 1000L
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        KeystoreHelper.generateKeyIfNecessary()
         Handler().postDelayed({
             val currentUser = FirebaseAuth.getInstance().currentUser
             if (currentUser != null) {

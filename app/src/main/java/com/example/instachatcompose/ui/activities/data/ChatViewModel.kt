@@ -259,6 +259,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                         snapshot.ref.child("seen").setValue(true)
                     }
 
+                    val decryptedText = try {
+                        MessageCrypto.decrypt(message.text, message.iv)
+                    } catch (e: Exception) {
+                        "[error decrypting]"
+                    }
+
+                    val decryptedMessage = message.copy(text = decryptedText)
+
                     if (hasLoadedInitialMessages &&
                         message.senderId != currentUserId &&
                         message.receiverId == currentUserId
@@ -274,34 +282,40 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                                 NotificationHelper.showNotification(
                                     context,
                                     title = "New message from ${message.senderName}",
-                                    message = message.text
+                                    message = decryptedText
                                 )
                             }
                         } else {
                             NotificationHelper.showNotification(
                                 context,
                                 title = "New message from ${message.senderName}",
-                                message = message.text
+                                message = decryptedText
                             )
                         }
                     }
-                    messageList.add(0, message)
+
+                    messageList.add(0, decryptedMessage)
                     _messages.value = messageList.sortedByDescending { it.timestamp }
                 }
             }
+
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onChildRemoved(snapshot: DataSnapshot) {}
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+
             override fun onDataChange(snapshot: DataSnapshot) {
                 hasLoadedInitialMessages = true
             }
+
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatVM", "ChildEventListener cancelled: ${error.message}")
             }
         }
+
         messagesRef.addChildEventListener(chatListener as ChildEventListener)
         messagesRef.addListenerForSingleValueEvent(chatListener as ValueEventListener)
     }
+
 
 
 
@@ -528,6 +542,8 @@ data class Message(
     val senderName: String = "",
     val receiverId: String = "",
     val text: String = "",
+    val iv: String = "",
+    val replyToIv: String? = null,
     val timestamp: Long = 0,
     val seen: Boolean = false,
     val replyTo: String? = null,
