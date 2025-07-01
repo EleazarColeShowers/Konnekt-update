@@ -117,10 +117,17 @@ class Konnekt : ComponentActivity() {
 @Composable
 fun AddFriendsPage() {
     val navController = rememberNavController()
+    val activity = LocalContext.current as? ComponentActivity
+    val context = LocalContext.current
+    val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
+    val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val viewModel: ChatViewModel = viewModel()
+    LaunchedEffect(userId) {
+        viewModel.listenForFriendRequests(context, userId)
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        val activity = LocalContext.current as? ComponentActivity
-        val username: String = activity?.intent?.getStringExtra("username") ?: "DefaultUsername"
-        val profilePic: Uri = Uri.parse(activity?.intent?.getStringExtra("profileUri") ?: "")
 
         Column(
             modifier = Modifier.padding(horizontal = 15.dp)
@@ -490,7 +497,6 @@ fun loadReceivedRequestsWithDetails(
 ) {
     val database = FirebaseDatabase.getInstance()
         .getReference("users")
-//        .child("users")
         .child(userId)
         .child("received_requests")
     val usersDatabase = FirebaseDatabase.getInstance()
@@ -680,7 +686,6 @@ fun UserReceivesRequest() {
         )
     }
 }
-
 
 private fun handleFriendRequest(
     request: FriendRequest,

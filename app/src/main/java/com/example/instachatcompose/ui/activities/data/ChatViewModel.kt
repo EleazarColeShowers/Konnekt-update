@@ -50,11 +50,66 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     private val _archivedGroups = MutableStateFlow<List<GroupChat>>(emptyList())
     val archivedGroups: StateFlow<List<GroupChat>> = _archivedGroups
     private val _archivedItems = MutableStateFlow<List<Any>>(emptyList()) // Unified list
-    val archivedItems: StateFlow<List<Any>> = _archivedItems
     private val _isArchiveInitialized = MutableStateFlow(false)
     val isArchiveInitialized: StateFlow<Boolean> = _isArchiveInitialized
     private val _isLoadingArchive = MutableStateFlow(true)
-    val isLoadingArchive: StateFlow<Boolean> = _isLoadingArchive
+    private var requestListener: ChildEventListener? = null
+
+    fun listenForFriendRequests(context: Context, userId: String) {
+        val database = FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(userId)
+            .child("received_requests")
+
+        requestListener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val fromId = snapshot.child("from").getValue(String::class.java)
+                val status = snapshot.child("status").getValue(String::class.java)
+
+                if (!fromId.isNullOrBlank() && status == "pending") {
+                    FirebaseDatabase.getInstance()
+                        .getReference("users")
+                        .child(fromId)
+                        .get()
+                        .addOnSuccessListener { userSnapshot ->
+                            val senderName = userSnapshot.child("username").getValue(String::class.java) ?: "Someone"
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                if (ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    NotificationHelper.showNotification(
+                                        context,
+                                        title = "New Friend Request",
+                                        message = "$senderName sent you a friend request."
+                                    )
+                                } // else: Request permission from activity
+                            } else {
+                                NotificationHelper.showNotification(
+                                    context,
+                                    title = "New Friend Request",
+                                    message = "$senderName sent you a friend request."
+                                )
+                            }
+                        }
+                }
+            }
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        database.addChildEventListener(requestListener as ChildEventListener)
+    }
+
+    fun stopListeningForFriendRequests(userId: String) {
+        val database = FirebaseDatabase.getInstance()
+            .getReference("users")
+            .child(userId)
+            .child("received_requests")
+        requestListener?.let { database.removeEventListener(it) }
+    }
 
     fun refreshCombinedChatList(
         currentUserId: String,
