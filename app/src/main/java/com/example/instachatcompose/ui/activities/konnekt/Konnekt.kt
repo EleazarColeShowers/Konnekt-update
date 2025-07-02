@@ -2,6 +2,7 @@
 
 package com.example.instachatcompose.ui.activities.konnekt
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -70,6 +71,7 @@ import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.components.SharedBottomAppBar
 import com.example.instachatcompose.ui.activities.data.BottomAppBarItem
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
+import com.example.instachatcompose.ui.activities.data.NotificationHelper
 import com.example.instachatcompose.ui.activities.mainpage.ProfileActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.tasks.Tasks
@@ -638,7 +640,14 @@ fun UserReceivesRequest() {
                     ) {
                         Button(
                             onClick = {
-                                handleFriendRequest(request, isAccepted = true, showDialog, message, username) {
+                                handleFriendRequest(
+                                    request = request,
+                                    isAccepted = true,
+                                    showDialog = showDialog,
+                                    message = message,
+                                    username = username,
+                                    context = context // ✅ Add this
+                                ) {
                                     friendRequests.remove(Pair(request, userDetails))
                                 }
                             },
@@ -656,7 +665,7 @@ fun UserReceivesRequest() {
                         }
                         IconButton(
                             onClick = {
-                                handleFriendRequest(request, isAccepted = false, showDialog, message, username) {
+                                handleFriendRequest(request, isAccepted = false, showDialog, message, username, context= context) {
                                     friendRequests.remove(Pair(request, userDetails))
                                 }
                             },
@@ -693,6 +702,7 @@ private fun handleFriendRequest(
     showDialog: MutableState<Boolean>,
     message: MutableState<String>,
     username: String,
+    context: Context,
     onComplete: () -> Unit = {}
 ) {
     val db = Firebase.database.reference
@@ -734,7 +744,22 @@ private fun handleFriendRequest(
                                         showDialog.value = true
                                         message.value = "You are now friends with $username"
                                         onComplete()
+
+                                        // ✅ Notify sender
+                                        db.child("users").child(request.from).get()
+                                            .addOnSuccessListener { senderSnapshot ->
+                                                val senderContext = context
+                                                NotificationHelper.showNotification(
+                                                    context = senderContext,
+                                                    title = "Friend Request Accepted",
+                                                    message = "You are now friends with $username"
+                                                )
+                                            }
+                                            .addOnFailureListener { e ->
+                                                Log.e("FriendRequest", "Failed to notify sender: ${e.message}")
+                                            }
                                     }
+
                                     .addOnFailureListener { e ->
                                         Log.e("FriendRequest", "Failed to add sender to receiver's friends: ${e.message}")
                                     }

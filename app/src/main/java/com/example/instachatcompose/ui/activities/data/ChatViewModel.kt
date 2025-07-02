@@ -84,7 +84,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                                         title = "New Friend Request",
                                         message = "$senderName sent you a friend request."
                                     )
-                                } // else: Request permission from activity
+                                }
                             } else {
                                 NotificationHelper.showNotification(
                                     context,
