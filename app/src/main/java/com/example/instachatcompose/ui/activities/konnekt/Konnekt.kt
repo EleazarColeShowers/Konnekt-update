@@ -710,22 +710,18 @@ private fun handleFriendRequest(
 
     if (isAccepted) {
         Log.d("FriendRequest", "Accepted: Deleting from received and sent requests")
-
-        // Find and delete from received_requests
         db.child("users").child(userId).child("received_requests")
             .orderByChild("from").equalTo(request.from)
             .get()
             .addOnSuccessListener { snapshot ->
                 snapshot.children.forEach { it.ref.removeValue() }
 
-                // Find and delete from sent_requests
                 db.child("users").child(request.from).child("sent_requests")
                     .orderByChild("to").equalTo(userId)
                     .get()
                     .addOnSuccessListener { sentSnapshot ->
                         sentSnapshot.children.forEach { it.ref.removeValue() }
 
-                        // Add friends
                         val receiverToSender = mapOf(
                             "friendId" to request.from,
                             "timestamp" to System.currentTimeMillis()
@@ -759,7 +755,6 @@ private fun handleFriendRequest(
                                                 Log.e("FriendRequest", "Failed to notify sender: ${e.message}")
                                             }
                                     }
-
                                     .addOnFailureListener { e ->
                                         Log.e("FriendRequest", "Failed to add sender to receiver's friends: ${e.message}")
                                     }

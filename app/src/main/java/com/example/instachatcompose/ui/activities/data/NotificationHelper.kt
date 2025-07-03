@@ -3,6 +3,7 @@ package com.example.instachatcompose.ui.activities.data
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.instachatcompose.R
@@ -20,8 +21,11 @@ object NotificationHelper {
             notificationManager.createNotificationChannel(channel)
         }
 
+        val largeIcon = BitmapFactory.decodeResource(context.resources, R.drawable.konnekt)
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.notificationkonnekt)
+            .setLargeIcon(largeIcon)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
