@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -62,6 +63,8 @@ sealed class ProfileType {
     data class Group(val id: String) : ProfileType()
 }
 
+data class GroupMember(val id: String, val name: String)
+
 @Composable
 fun UserOrGroupProfileScreen(profileType: ProfileType) {
     val currentUser = FirebaseAuth.getInstance().currentUser
@@ -74,11 +77,16 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
     var bio by remember { mutableStateOf<String?>(null) }
     var profileImage by remember { mutableStateOf<String?>(null) }
     var isFriend by remember { mutableStateOf(false) }
-    var members by remember { mutableStateOf<List<String>>(emptyList()) }
+//    var members by remember { mutableStateOf<List<String>>(emptyList()) }
 
     var showEditDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
     var adminId by remember { mutableStateOf<String?>(null) }
+    var members by remember { mutableStateOf<List<GroupMember>>(emptyList()) }
+    var selectedMember by remember { mutableStateOf<GroupMember?>(null) }
+    var showMemberOptionsDialog by remember { mutableStateOf(false) }
+    var showAddFriendDialog by remember { mutableStateOf(false)}
+
 
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -119,14 +127,15 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                 adminId = groupSnapshot.child("adminId").getValue(String::class.java)
 
                 val memberIds = groupSnapshot.child("members").children.mapNotNull { it.key }
-                val usernames = mutableListOf<String>()
+                val usernames = mutableListOf<GroupMember>()
                 for (memberId in memberIds) {
                     val usernameSnapshot = database.child("users").child(memberId).child("username").get().await()
                     var username = usernameSnapshot.getValue(String::class.java) ?: memberId
-                    if (memberId == adminId) username += " - \uD83D\uDC51"
-                    usernames.add(username)
+                    if (memberId == adminId) username += " - 👑"
+                    usernames.add(GroupMember(id = memberId, name = username))
                 }
                 members = usernames
+
             }
         }
     }
@@ -146,6 +155,13 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             profileImage = profileImage,
             showFriendButton = profileType is ProfileType.Friend,
             isFriend = isFriend,
+            adminId = adminId,
+            onMemberClick = { member ->
+                if (currentUser?.uid == adminId) {
+                    selectedMember = member
+                    showMemberOptionsDialog = true
+                }
+            },
             onFriendButtonClick = if (profileType is ProfileType.Friend) {
                 {
                     val friendId = profileType.id
@@ -192,6 +208,15 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
 
         if (profileType is ProfileType.Group) {
             Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = { showEditDialog = true },
+                colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(0.8f)
+            ) {
+                Text("Add a New Member", color = Color.White)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = { showEditDialog = true },
                 colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
@@ -256,6 +281,67 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             }
         )
     }
+    if (showMemberOptionsDialog && selectedMember != null && profileType is ProfileType.Group) {
+        AlertDialog(
+            onDismissRequest = { showMemberOptionsDialog = false },
+            title = { Text("Manage Member") },
+            text = {
+                Column {
+                    Text("What would you like to do with ${selectedMember!!.name}?")
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (selectedMember!!.id != adminId) {
+                        Button(
+                            onClick = {
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    database.child("chats")
+                                        .child("group_${profileType.id}")
+                                        .child("adminId")
+                                        .setValue(selectedMember!!.id)
+                                }
+                                adminId = selectedMember!!.id
+                                showMemberOptionsDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Make Admin")
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Button(
+                        onClick = {
+                            CoroutineScope(Dispatchers.IO).launch {
+                                database.child("chats")
+                                    .child("group_${profileType.id}")
+                                    .child("members")
+                                    .child(selectedMember!!.id)
+                                    .removeValue()
+                            }
+                            members = members.filterNot { it.id == selectedMember!!.id }
+                            showMemberOptionsDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Remove Member")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { showMemberOptionsDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
+
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -264,12 +350,13 @@ fun ProfileScreen(
     title: String,
     subtitle: String,
     bio: String? = null,
-    members: List<String>? = null,
+    members: List<GroupMember>? = null,
     profileImage: String?,
     showFriendButton: Boolean = false,
     isFriend: Boolean = false,
     onFriendButtonClick: (() -> Unit)? = null,
-    onMemberClick: ((String) -> Unit)? = null // new
+    onMemberClick: ((GroupMember) -> Unit)? = null,
+    adminId: String?
 ) {
     Box(
         modifier = Modifier
@@ -322,7 +409,6 @@ fun ProfileScreen(
                 }
             }
 
-            // ⬇️ Members Chips shown outside the bio card
             if (!members.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Group Members", fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -330,19 +416,12 @@ fun ProfileScreen(
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-//                    mainAxisSpacing = 8.dp,
-//                    crossAxisSpacing = 8.dp
+                        .padding(horizontal = 12.dp)
                 ) {
                     members.forEach { member ->
                         AssistChip(
                             onClick = { onMemberClick?.invoke(member) },
-                            label = {
-                                Text(
-                                    text = member,
-                                    fontSize = 14.sp
-                                )
-                            },
+                            label = { Text(text = member.name, fontSize = 14.sp) },
                             shape = RoundedCornerShape(20.dp),
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = Color(0xFFDDEEFF),
@@ -352,8 +431,6 @@ fun ProfileScreen(
                     }
                 }
             }
-
-            // Friend Add/Remove Button
             if (showFriendButton && onFriendButtonClick != null) {
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
