@@ -184,30 +184,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             }
 
             val groupItems = if (isOnline && groupChats.isNotEmpty()) {
-                groupChats.map {
-                    val timestamp = fetchLastMessageTimestamp(it.groupId)
+                groupChats.mapNotNull { group ->
+                    // ✅ Only include the group if the current user is still a member
+                    if (currentUserId !in group.members) return@mapNotNull null
+
+                    val timestamp = fetchLastMessageTimestamp(group.groupId)
 
                     groupDao.insertGroup(
                         GroupEntity(
-                            groupId = it.groupId,
+                            groupId = group.groupId,
                             userId = currentUserId,
-                            groupName = it.groupName,
-                            groupImageUri = it.groupImage,
-                            memberIds = it.members.joinToString(",")
+                            groupName = group.groupName,
+                            groupImageUri = group.groupImage,
+                            memberIds = group.members.joinToString(",")
                         )
                     )
 
-                    ChatItem.GroupItem(it, timestamp)
+                    ChatItem.GroupItem(group, timestamp)
                 }
             } else {
-                groupDao.getGroupsForUser(currentUserId).first().map {
+                groupDao.getGroupsForUser(currentUserId).first().mapNotNull {
+                    val members = it.memberIds.split(",")
+                    if (currentUserId !in members) return@mapNotNull null
+
                     val timestamp = fetchLastMessageTimestamp(it.groupId)
+
                     ChatItem.GroupItem(
                         GroupChat(
                             groupId = it.groupId,
                             groupName = it.groupName,
                             groupImage = it.groupImageUri ?: "",
-                            members = it.memberIds.split(",")
+                            members = members
                         ),
                         timestamp
                     )

@@ -1,5 +1,6 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -30,6 +31,7 @@ import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.GenericTypeIndicator
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
@@ -125,7 +127,6 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                 title = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
                 profileImage = groupSnapshot.child("groupImage").getValue(String::class.java)
                 adminId = groupSnapshot.child("adminId").getValue(String::class.java)
-
                 val memberIds = groupSnapshot.child("members").children.mapNotNull { it.key }
                 val usernames = mutableListOf<GroupMember>()
                 for (memberId in memberIds) {
@@ -194,11 +195,9 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                         val friendshipData = mapOf("friendId" to friendId, "timestamp" to System.currentTimeMillis())
                         val reverseFriendshipData = mapOf("friendId" to currentUserId, "timestamp" to System.currentTimeMillis())
 
-                        if (userFriendsRef != null) {
-                            userFriendsRef.setValue(friendshipData).addOnSuccessListener {
-                                friendFriendsRef.setValue(reverseFriendshipData).addOnSuccessListener {
-                                    isFriend = true
-                                }
+                        userFriendsRef?.setValue(friendshipData)?.addOnSuccessListener {
+                            friendFriendsRef.setValue(reverseFriendshipData).addOnSuccessListener {
+                                isFriend = true
                             }
                         }
                     }
@@ -242,6 +241,9 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                             database.child("chats").child("group_${profileType.id}").child("members").child(it).removeValue()
                         }
                     }
+                    val intent= Intent(context, MessageActivity::class.java)
+                    context.startActivity(intent)
+
                 },
                 colors = ButtonDefaults.buttonColors(Color.Red),
                 shape = RoundedCornerShape(12.dp),
@@ -294,10 +296,23 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                         Button(
                             onClick = {
                                 CoroutineScope(Dispatchers.IO).launch {
-                                    database.child("chats")
+                                    val groupAdminsRef = database.child("chats")
                                         .child("group_${profileType.id}")
                                         .child("adminId")
-                                        .setValue(selectedMember!!.id)
+
+                                    groupAdminsRef.get().addOnSuccessListener { snapshot ->
+                                        val value = snapshot.value
+                                        val currentAdmins: MutableList<String> = when (value) {
+                                            is String -> mutableListOf(value)
+                                            is List<*> -> value.filterIsInstance<String>().toMutableList()
+                                            else -> mutableListOf()
+                                        }
+
+                                        if (!currentAdmins.contains(selectedMember!!.id) && currentAdmins.size < 5) {
+                                            groupAdminsRef.setValue(currentAdmins + selectedMember!!.id)
+                                        }
+                                    }
+
                                 }
                                 adminId = selectedMember!!.id
                                 showMemberOptionsDialog = false
