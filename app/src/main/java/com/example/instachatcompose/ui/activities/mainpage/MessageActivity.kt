@@ -1591,7 +1591,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.background)
+                        .border(3.dp, Color(0xFF2F9ECE), CircleShape)
+                        .background(Color.LightGray)
                 )
             } else {
                 Box(

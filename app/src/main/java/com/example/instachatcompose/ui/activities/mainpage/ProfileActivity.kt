@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,8 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
@@ -35,6 +39,7 @@ import com.google.firebase.database.GenericTypeIndicator
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
+import java.util.UUID
 
 class ProfileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,7 +56,6 @@ class ProfileActivity : ComponentActivity() {
                     if (groupId != null) {
                         UserOrGroupProfileScreen(ProfileType.Group(groupId))
                     } else {
-//                        FriendProfileScreen(friendId ?: "")
                         friendId?.let { ProfileType.Friend(it) }
                             ?.let { UserOrGroupProfileScreen(it) }
                     }
@@ -73,6 +77,10 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
     val database = FirebaseDatabase.getInstance().reference
     val storageRef = FirebaseStorage.getInstance().reference
     val context = LocalContext.current
+    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val viewModel: ChatViewModel = viewModel()
+    val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
+
 
     var title by remember { mutableStateOf("Loading...") }
     var subtitle by remember { mutableStateOf("") }
@@ -88,6 +96,13 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
     var selectedMember by remember { mutableStateOf<GroupMember?>(null) }
     var showMemberOptionsDialog by remember { mutableStateOf(false) }
     var showAddFriendDialog by remember { mutableStateOf(false)}
+
+    LaunchedEffect(userId) {
+        viewModel.loadFriendsWithDetails(userId) { friends ->
+            friendList.clear()
+            friendList.addAll(friends)
+        }
+    }
 
 
     val imageLauncher = rememberLauncherForActivityResult(
@@ -208,7 +223,7 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
         if (profileType is ProfileType.Group) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = { showEditDialog = true },
+                onClick = { showAddFriendDialog = true },
                 colors = ButtonDefaults.buttonColors(Color(0xFF2F9ECE)),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(0.8f)
@@ -253,6 +268,84 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             }
         }
     }
+    if (showAddFriendDialog && profileType is ProfileType.Group) {
+        AlertDialog(
+            onDismissRequest = { showAddFriendDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    // Handle confirm action here
+                    showAddFriendDialog = false
+                }) {
+                    Text("Add")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddFriendDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            title = { Text("Add Friends") },
+            text = {
+                // Limit height to avoid AlertDialog overflow
+                Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 300.dp)) {
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(friendList, key = { pair ->
+                            val friend = pair.first
+                            friend.friendId.ifBlank { UUID.randomUUID().toString() }
+                        }) { pair ->
+                            val friend = pair.first
+                            val details = pair.second
+
+                            val friendId = friend.friendId
+                            val username = details["username"] ?: "Unknown"
+                            val profileImage = details["profileImageUri"] ?: ""
+
+                            var isChecked by remember { mutableStateOf(false) }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (profileImage.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = profileImage,
+                                        contentDescription = "Profile Image",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.Gray)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Text(
+                                    text = username,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 16.sp
+                                )
+
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = { isChecked = it }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        )
+    }
+
 
     if (showEditDialog && profileType is ProfileType.Group) {
         AlertDialog(
@@ -321,10 +414,8 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                         ) {
                             Text("Make Admin")
                         }
-
                         Spacer(modifier = Modifier.height(8.dp))
                     }
-
                     Button(
                         onClick = {
                             CoroutineScope(Dispatchers.IO).launch {
@@ -356,7 +447,6 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             dismissButton = {}
         )
     }
-
 }
 
 @OptIn(ExperimentalLayoutApi::class)
