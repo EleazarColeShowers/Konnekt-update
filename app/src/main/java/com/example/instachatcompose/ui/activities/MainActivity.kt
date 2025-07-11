@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.room.Room
+import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatManager
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
 import com.example.instachatcompose.ui.activities.data.KeystoreHelper
@@ -17,12 +19,26 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val splashScreenDuration = 1000L
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KeystoreHelper.generateKeyIfNecessary()
+
+//        CoroutineScope(Dispatchers.IO).launch {
+//            val db = Room.databaseBuilder(
+//                applicationContext,
+//                AppDatabase::class.java,
+//                "instachat_db" // make sure this matches your actual DB name
+//            ).build()
+//
+//            db.clearAllTables()
+//        }
+
         Handler().postDelayed({
             val currentUser = FirebaseAuth.getInstance().currentUser
             if (currentUser != null) {

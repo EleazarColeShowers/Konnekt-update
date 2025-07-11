@@ -80,15 +80,11 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     val viewModel: ChatViewModel = viewModel()
     val friendList = remember { mutableStateListOf<Pair<Friend, Map<String, String>>>() }
-
-
     var title by remember { mutableStateOf("Loading...") }
     var subtitle by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf<String?>(null) }
     var profileImage by remember { mutableStateOf<String?>(null) }
     var isFriend by remember { mutableStateOf(false) }
-//    var members by remember { mutableStateOf<List<String>>(emptyList()) }
-
     var showEditDialog by remember { mutableStateOf(false) }
     var newGroupName by remember { mutableStateOf("") }
     var adminId by remember { mutableStateOf<String?>(null) }
@@ -96,6 +92,7 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
     var selectedMember by remember { mutableStateOf<GroupMember?>(null) }
     var showMemberOptionsDialog by remember { mutableStateOf(false) }
     var showAddFriendDialog by remember { mutableStateOf(false)}
+    val selectedFriends = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(userId) {
         viewModel.loadFriendsWithDetails(userId) { friends ->
@@ -155,8 +152,6 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             }
         }
     }
-
-    // Shared UI
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -273,11 +268,26 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
             onDismissRequest = { showAddFriendDialog = false },
             confirmButton = {
                 TextButton(onClick = {
-                    // Handle confirm action here
+                    val groupId = profileType.id // Already available from ProfileType.Group
+                    val groupRef = database.child("chats").child("group_$groupId").child("members")
+
+                    CoroutineScope(Dispatchers.IO).launch {
+                        selectedFriends.forEach { friendId ->
+                            groupRef.child(friendId).setValue(true)
+                        }
+                    }
+
+                    // Optionally update local UI state:
+                    members = members + selectedFriends.map { id ->
+                        GroupMember(id, friendList.find { it.first.friendId == id }?.second?.get("username") ?: id)
+                    }
+
+                    selectedFriends.clear()
                     showAddFriendDialog = false
                 }) {
                     Text("Add")
                 }
+
             },
             dismissButton = {
                 TextButton(onClick = { showAddFriendDialog = false }) {
@@ -335,9 +345,13 @@ fun UserOrGroupProfileScreen(profileType: ProfileType) {
                                 )
 
                                 Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = { isChecked = it }
+                                    checked = selectedFriends.contains(friendId),
+                                    onCheckedChange = { isChecked ->
+                                        if (isChecked) selectedFriends.add(friendId)
+                                        else selectedFriends.remove(friendId)
+                                    }
                                 )
+
                             }
                         }
                     }
