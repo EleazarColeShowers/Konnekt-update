@@ -1479,7 +1479,6 @@ sealed class ChatItem {
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-
     // State and context
     var currentUsername by remember { mutableStateOf("") }
     var messageText by remember { mutableStateOf("") }
@@ -1795,8 +1794,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         KeystoreHelper.generateKeyIfNecessary() // Ensure key is ready
 
                         if (editingMessageId != null) {
-                            val (encryptedText, ivString) = MessageCrypto.encrypt(messageText)
-
+                            val (encryptedText, ivString) = MessageCrypto.encrypt(messageText.trim())
                             val messageUpdates = mapOf(
                                 "text" to encryptedText,
                                 "iv" to ivString,
@@ -1928,11 +1926,10 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                 }
                 message.replyTo?.let {
                     val replyTextDecrypted = try {
-                        MessageCrypto.decrypt(message.replyTo ?: "", message.replyToIv ?: "")
+                        MessageCrypto.decrypt(message.replyTo.trim() ?: "", message.replyToIv?.trim() ?: "")
                     } catch (e: Exception) {
                         "[error decrypting reply]"
                     }
-
                     Text(
                         text = "Replying to: $replyTextDecrypted",
                         color = Color.White,
@@ -1940,20 +1937,28 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
+                val mainTextDecrypted = try {
+                    MessageCrypto.decrypt(message.text.trim(), message.iv.trim() ?: "")
+                } catch (e: Exception) {
+                    Log.e("Decryption", "Error: ${e.message}", e)
+                    "[error decrypting message: ${e.message ?: "Unknown error"}]"
+                }
 
-                val annotated = buildAnnotatedString {
+                val annotatedText = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
                     var currentIndex = 0
-                    regex.findAll(message.text).forEach { match ->
-                        append(message.text.substring(currentIndex, match.range.first))
+                    regex.findAll(mainTextDecrypted).forEach { match ->
+                        append(mainTextDecrypted.substring(currentIndex, match.range.first))
                         withStyle(SpanStyle(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)) {
                             append(match.value)
                         }
                         currentIndex = match.range.last + 1
                     }
-                    append(message.text.substring(currentIndex))
+                    append(mainTextDecrypted.substring(currentIndex))
                 }
-                Text(text = annotated, color = textColor)
+
+                Text(text = annotatedText, color = textColor)
+
             }
         }
         Box(
