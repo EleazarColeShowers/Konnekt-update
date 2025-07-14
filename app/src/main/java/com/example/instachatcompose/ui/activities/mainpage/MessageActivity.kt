@@ -1,5 +1,7 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
+import CameraPermissionWrapper
+import CameraPreview
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -106,7 +108,6 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
-import com.example.instachatcompose.ui.activities.konnekt.Konnekt
 import com.example.instachatcompose.ui.activities.konnekt.loadReceivedRequestsWithDetails
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.Firebase
@@ -1479,7 +1480,7 @@ sealed class ChatItem {
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-    // State and context
+    var showCamera by remember { mutableStateOf(false) }
     var currentUsername by remember { mutableStateOf("") }
     var messageText by remember { mutableStateOf("") }
     var showMentionDropdown by remember { mutableStateOf(false) }
@@ -1516,6 +1517,12 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val filteredMembers = groupMembers.filter {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
+    var hasPermission by remember { mutableStateOf(false) }
+
+    CameraPermissionWrapper {
+        hasPermission = true
+    }
+
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
             currentUsername = name ?: "Unknown"
@@ -1784,10 +1791,21 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         )
                     }
                 }
-                IconButton(
-                    onClick= {}
-                ){
-                    Icon(painter = painterResource(id = R.drawable.nopfpcam), contentDescription = "camera", modifier = Modifier.size(24.dp))
+                if (showCamera && hasPermission) {
+                    CameraPreview(
+                        modifier = Modifier.fillMaxSize(),
+                        isFrontCamera = true
+                    )
+                } else {
+                    IconButton(
+                        onClick = { showCamera = true }
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.nopfpcam),
+                            contentDescription = "camera",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
