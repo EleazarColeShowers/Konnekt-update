@@ -29,18 +29,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KeystoreHelper.generateKeyIfNecessary()
 
-//        CoroutineScope(Dispatchers.IO).launch {
-//            val db = Room.databaseBuilder(
-//                applicationContext,
-//                AppDatabase::class.java,
-//                "instachat_db" // make sure this matches your actual DB name
-//            ).build()
-//
-//            db.clearAllTables()
-//        }
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            val currentUserId = currentUser.uid
+            val chatViewModel = ChatViewModel(application)
+
+            // 🔥 Listen globally for friend requests!
+            chatViewModel.listenForFriendRequests(this, currentUserId)
+
+            // You can also set up message listening later inside Handler if needed
+        }
 
         Handler().postDelayed({
-            val currentUser = FirebaseAuth.getInstance().currentUser
             if (currentUser != null) {
                 val currentUserId = currentUser.uid
                 val dbRef = FirebaseDatabase.getInstance().reference

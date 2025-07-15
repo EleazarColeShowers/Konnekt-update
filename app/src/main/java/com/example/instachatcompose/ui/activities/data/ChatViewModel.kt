@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.google.firebase.Firebase
 import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +55,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val isArchiveInitialized: StateFlow<Boolean> = _isArchiveInitialized
     private val _isLoadingArchive = MutableStateFlow(true)
     private var requestListener: ChildEventListener? = null
+    private val _friendRequestCount = MutableStateFlow(0)
+    val friendRequestCount: StateFlow<Int> = _friendRequestCount
 
     fun listenForFriendRequests(context: Context, userId: String) {
         val database = FirebaseDatabase.getInstance()
@@ -61,46 +64,68 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             .child(userId)
             .child("received_requests")
 
+        // Clear old listener
+        requestListener?.let { database.removeEventListener(it) }
+
         requestListener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-                val fromId = snapshot.child("from").getValue(String::class.java)
-                val status = snapshot.child("status").getValue(String::class.java)
-
-                if (!fromId.isNullOrBlank() && status == "pending") {
-                    FirebaseDatabase.getInstance()
-                        .getReference("users")
-                        .child(fromId)
-                        .get()
-                        .addOnSuccessListener { userSnapshot ->
-                            val senderName = userSnapshot.child("username").getValue(String::class.java) ?: "Someone"
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                if (ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                ) {
-                                    NotificationHelper.showNotification(
-                                        context,
-                                        title = "New Friend Request",
-                                        message = "$senderName sent you a friend request."
-                                    )
-                                }
-                            } else {
-                                NotificationHelper.showNotification(
-                                    context,
-                                    title = "New Friend Request",
-                                    message = "$senderName sent you a friend request."
-                                )
-                            }
-                        }
-                }
+                handleRequestChange(context, snapshot)
+                updateRequestCount(snapshot.ref.parent!!)
             }
-            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
-            override fun onChildRemoved(snapshot: DataSnapshot) {}
+
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                handleRequestChange(context, snapshot)
+                updateRequestCount(snapshot.ref.parent!!)
+            }
+
+            override fun onChildRemoved(snapshot: DataSnapshot) {
+                updateRequestCount(snapshot.ref.parent!!)
+            }
+
             override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
             override fun onCancelled(error: DatabaseError) {}
         }
+
         database.addChildEventListener(requestListener as ChildEventListener)
+
+        // Initial load
+        database.addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                updateRequestCount(database)
+            }
+
+            override fun onCancelled(error: DatabaseError) {}
+        })
+    }
+
+    // Helper function to update count
+    private fun updateRequestCount(database: DatabaseReference) {
+        database.get().addOnSuccessListener { snapshot ->
+            val pendingCount = snapshot.children.count {
+                it.child("status").getValue(String::class.java) == "pending"
+            }
+            _friendRequestCount.value = pendingCount
+        }
+    }
+
+    // Optional: Single place for notifications
+    private fun handleRequestChange(context: Context, snapshot: DataSnapshot) {
+        val fromId = snapshot.child("from").getValue(String::class.java)
+        val status = snapshot.child("status").getValue(String::class.java)
+        if (!fromId.isNullOrBlank() && status == "pending") {
+            FirebaseDatabase.getInstance()
+                .getReference("users").child(fromId).get()
+                .addOnSuccessListener { userSnapshot ->
+                    val senderName = userSnapshot.child("username").getValue(String::class.java) ?: "Someone"
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        NotificationHelper.showNotification(context, "New Friend Request", "$senderName sent you a friend request.")
+                    } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        NotificationHelper.showNotification(context, "New Friend Request", "$senderName sent you a friend request.")
+                    }
+                }
+        }
     }
 
     fun stopListeningForFriendRequests(userId: String) {

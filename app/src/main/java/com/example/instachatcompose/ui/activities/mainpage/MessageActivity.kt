@@ -218,7 +218,7 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                User(username = username, profilePicUrl = profilePicUrl, userId = userId, searchQuery = searchQuery, onSearchQueryChange = {searchQuery= it}, navController)
+                User(username = username, profilePicUrl = profilePicUrl, userId = userId, searchQuery = searchQuery, onSearchQueryChange = {searchQuery= it}, navController, viewModel)
             }
         },
         bottomBar = {
@@ -694,11 +694,13 @@ object TempGroupIdHolder {
 }
 
 @Composable
-fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit, navController: NavController) {
+fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery: String, onSearchQueryChange: (String) -> Unit, navController: NavController, viewModel: ChatViewModel) {
     val settingsIcon = painterResource(id = R.drawable.settings)
     val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
     val requestCount = fetchReceivedRequestsCount(userId).value
+    val count by viewModel.friendRequestCount.collectAsState()
+
     Column {
         Row(
             modifier = Modifier
@@ -812,7 +814,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Requests($requestCount)",
+                text = "Requests($count)",
                 style = TextStyle(
                     fontSize = 14.sp,
                     fontWeight = FontWeight(400),
@@ -1254,7 +1256,7 @@ fun FriendRow(
         "${friend.friendId}_${currentUserId}"
     }
 
-    var lastMessage by remember { mutableStateOf("Loading...") }
+    var lastMessage by remember { mutableStateOf(" ") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
 
 
@@ -1475,7 +1477,6 @@ sealed class ChatItem {
 
     ) : ChatItem()
 }
-
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
