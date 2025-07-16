@@ -207,7 +207,7 @@ fun MessagePage() {
     }
 
     LaunchedEffect(Unit) {
-        createNotificationChannel(context)
+        viewModel.createNotificationChannel(context)
         delay(3000)
         isLoading = false
     }
@@ -277,20 +277,6 @@ fun MessagePage() {
     }
 }
 
-fun createNotificationChannel(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(
-            "default_channel",
-            "Default Channel",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Used for default notifications"
-        }
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-        Log.d("NotificationChannel", "Notification channel created")
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

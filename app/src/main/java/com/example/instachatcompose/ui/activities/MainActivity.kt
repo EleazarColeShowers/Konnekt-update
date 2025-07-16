@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
             // 🔥 Listen globally for friend requests!
             chatViewModel.listenForFriendRequests(this, currentUserId)
 
-            // You can also set up message listening later inside Handler if needed
         }
 
         Handler().postDelayed({

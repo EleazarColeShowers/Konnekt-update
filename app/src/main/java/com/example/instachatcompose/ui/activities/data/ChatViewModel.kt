@@ -2,6 +2,8 @@ package com.example.instachatcompose.ui.activities.data
 
 import android.Manifest
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -59,12 +61,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val friendRequestCount: StateFlow<Int> = _friendRequestCount
 
     fun listenForFriendRequests(context: Context, userId: String) {
+        createNotificationChannel(context)
+
         val database = FirebaseDatabase.getInstance()
             .getReference("users")
             .child(userId)
             .child("received_requests")
 
-        // Clear old listener
         requestListener?.let { database.removeEventListener(it) }
 
         requestListener = object : ChildEventListener {
@@ -87,8 +90,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
 
         database.addChildEventListener(requestListener as ChildEventListener)
-
-        // Initial load
         database.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 updateRequestCount(database)
@@ -98,7 +99,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         })
     }
 
-    // Helper function to update count
     private fun updateRequestCount(database: DatabaseReference) {
         database.get().addOnSuccessListener { snapshot ->
             val pendingCount = snapshot.children.count {
@@ -108,7 +108,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
-    // Optional: Single place for notifications
     private fun handleRequestChange(context: Context, snapshot: DataSnapshot) {
         val fromId = snapshot.child("from").getValue(String::class.java)
         val status = snapshot.child("status").getValue(String::class.java)
@@ -191,7 +190,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                             )
                         )
                     )
-
                     ChatItem.FriendItem(friend, details, timestamp)
                 }
             } else {
@@ -210,9 +208,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
 
             val groupItems = if (isOnline && groupChats.isNotEmpty()) {
                 groupChats.mapNotNull { group ->
-                    // ✅ Only include the group if the current user is still a member
                     if (currentUserId !in group.members) return@mapNotNull null
-
                     val timestamp = fetchLastMessageTimestamp(group.groupId)
 
                     groupDao.insertGroup(
@@ -324,6 +320,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
         }
     }
 
+    fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "default_channel",
+                "Default Channel",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Used for default notifications"
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+            Log.d("NotificationChannel", "Notification channel created")
+        }
+    }
+
     fun observeMessages(
         context: Context,
         chatId: String,
@@ -398,13 +409,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                 Log.e("ChatVM", "ChildEventListener cancelled: ${error.message}")
             }
         }
-
         messagesRef.addChildEventListener(chatListener as ChildEventListener)
         messagesRef.addListenerForSingleValueEvent(chatListener as ValueEventListener)
     }
-
-
-
 
     fun observeTyping(chatId: String, receiverId: String) {
         val typingRef = db.child("chats").child(chatId).child("typing").child(receiverId)
