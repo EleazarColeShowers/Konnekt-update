@@ -2,6 +2,7 @@ package com.example.instachatcompose.ui.activities.mainpage
 
 import CameraPermissionWrapper
 import CameraPreview
+import CameraWithGallery
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -1779,9 +1780,10 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
                 if (showCamera && hasPermission) {
-                    CameraPreview(
-                        modifier = Modifier.fillMaxSize(),
-                        isFrontCamera = true
+                    CameraWithGallery(
+                        onGalleryClick = { /* open full gallery */ },
+                        onCaptureClick = { /* handle capture click */ },
+                        onImageClick = { uri -> /* handle image click */ }
                     )
                 } else {
                     IconButton(
@@ -1794,6 +1796,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         )
                     }
                 }
+
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
                         KeystoreHelper.generateKeyIfNecessary() // Ensure key is ready
