@@ -56,6 +56,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -131,6 +132,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
@@ -153,6 +155,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.math.absoluteValue
@@ -1506,6 +1509,23 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
     var hasPermission by remember { mutableStateOf(false) }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
+            // Handle image URI after selection
+            // Show image with bottom text bar
+        }
+    }
+    val capturedImageUri = remember { mutableStateOf<Uri?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) {
+            capturedImageUri.value?.let { uri ->
+                // Show image with bottom text bar
+            }
+        }
+    }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+
+
 
     CameraPermissionWrapper {
         hasPermission = true
@@ -1781,8 +1801,19 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 }
                 if (showCamera && hasPermission) {
                     CameraWithGallery(
-                        onGalleryClick = { /* open full gallery */ },
-                        onCaptureClick = { /* handle capture click */ },
+                        onGalleryClick = {
+                            galleryLauncher.launch("image/*")
+
+                        },
+                        onCaptureClick = {
+                            val uri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.provider",
+                                File(context.cacheDir, "captured_image_${System.currentTimeMillis()}.jpg")
+                            )
+                            capturedImageUri.value = uri
+                            cameraLauncher.launch(uri)
+                        },
                         onImageClick = { uri -> /* handle image click */ }
                     )
                 } else {
@@ -1799,8 +1830,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
-                        KeystoreHelper.generateKeyIfNecessary() // Ensure key is ready
-
+                        KeystoreHelper.generateKeyIfNecessary()
                         if (editingMessageId != null) {
                             val (encryptedText, ivString) = MessageCrypto.encrypt(messageText.trim())
                             val messageUpdates = mapOf(
@@ -1847,10 +1877,41 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 {
                     Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
-
             }
         }
     }
+    if (selectedImageUri != null) {
+        Column(
+            Modifier.fillMaxSize().background(Color.Black)
+        ) {
+            AsyncImage(
+                model = selectedImageUri,
+                contentDescription = null,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .background(Color.White, RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+            ) {
+                TextField(
+                    value = messageText,
+                    onValueChange = { messageText = it },
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = {
+                    // send the image and message logic
+                    selectedImageUri = null
+                }) {
+                    Icon(Icons.Default.Send, contentDescription = "Send Image")
+                }
+            }
+        }
+    }
+
 }
 
 @OptIn(ExperimentalFoundationApi::class)
