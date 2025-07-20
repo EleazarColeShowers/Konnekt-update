@@ -1,15 +1,11 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
 import CameraPermissionWrapper
-import CameraPreview
 import CameraWithGallery
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -1814,7 +1810,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             capturedImageUri.value = uri
                             cameraLauncher.launch(uri)
                         },
-                        onImageClick = { uri -> /* handle image click */ }
+                        onImageClick = { uri ->  }
                     )
                 } else {
                     IconButton(
