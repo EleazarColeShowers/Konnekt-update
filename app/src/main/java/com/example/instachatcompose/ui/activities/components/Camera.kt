@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -108,7 +109,7 @@ fun CameraPreview(
         factory = { ctx ->
             PreviewView(ctx).apply {
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                previewUseCase.setSurfaceProvider(this.surfaceProvider)
+                previewUseCase.surfaceProvider = this.surfaceProvider
             }
         }
     )
@@ -141,60 +142,77 @@ fun fetchRecentImages(context: Context, limit: Int = 6): List<Uri> {
 fun CameraWithGallery(
     onGalleryClick: () -> Unit,
     onCaptureClick: () -> Unit,
-    onImageClick: (Uri) -> Unit
+    onImageClick: (Uri) -> Unit,
+    selectedImageUri: Uri?, // Added
+    onRemoveSelectedImage: () -> Unit // Added
 ) {
     val context = LocalContext.current
     val images = remember { fetchRecentImages(context) }
 
-    Column(
+    Box(
         modifier = Modifier.fillMaxSize()
+            .background(Color.Transparent)
     ) {
-        CameraPreview(modifier = Modifier.weight(1f))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .background(Color.Transparent),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            IconButton(onClick = onGalleryClick) {
-                Image(
-                    painter = painterResource(id = R.drawable.insertphoto),
-                    contentDescription = "Gallery Icon",
-                    modifier = Modifier.size(32.dp)
-                )
-            }
+            Box(modifier = Modifier.weight(1f)) {
+                CameraPreview(modifier = Modifier.fillMaxSize())
 
-            LazyRow(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(images.size) { index ->
-                    val uri = images[index]
+                selectedImageUri?.let { uri ->
                     Image(
                         painter = rememberAsyncImagePainter(uri),
-                        contentDescription = null,
+                        contentDescription = "Selected Image",
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { onImageClick(uri) }
+                            .fillMaxSize()
+                            .clickable { onRemoveSelectedImage() } // tap to remove
                     )
                 }
             }
 
-            IconButton(onClick = onCaptureClick) {
-                Image(
-                    painter = painterResource(id = R.drawable.nopfpcam),
-                    contentDescription = "Capture Button",
-                    modifier = Modifier.size(32.dp),
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+                    .background(Color.Transparent),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(onClick = onGalleryClick) {
+                    Image(
+                        painter = painterResource(id = R.drawable.insertphoto),
+                        contentDescription = "Gallery Icon",
+                        modifier = Modifier.size(32.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
+                    )
+                }
 
-                )
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(images.size) { index ->
+                        val uri = images[index]
+                        Image(
+                            painter = rememberAsyncImagePainter(uri),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onImageClick(uri) }
+                        )
+                    }
+                }
+
+                IconButton(onClick = onCaptureClick) {
+                    Image(
+                        painter = painterResource(id = R.drawable.nopfpcam),
+                        contentDescription = "Capture Button",
+                        modifier = Modifier.size(32.dp),
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground)
+                    )
+                }
             }
         }
-
     }
 }
-

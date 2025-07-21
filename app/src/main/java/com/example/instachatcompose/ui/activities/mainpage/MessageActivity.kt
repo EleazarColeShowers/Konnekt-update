@@ -1796,22 +1796,21 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
                 if (showCamera && hasPermission) {
-                    CameraWithGallery(
-                        onGalleryClick = {
-                            galleryLauncher.launch("image/*")
-
-                        },
-                        onCaptureClick = {
-                            val uri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.provider",
-                                File(context.cacheDir, "captured_image_${System.currentTimeMillis()}.jpg")
-                            )
-                            capturedImageUri.value = uri
-                            cameraLauncher.launch(uri)
-                        },
-                        onImageClick = { uri ->  }
-                    )
+                        CameraWithGallery(
+                            onGalleryClick = { galleryLauncher.launch("image/*") },
+                            onCaptureClick = {
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.provider",
+                                    File(context.cacheDir, "captured_image_${System.currentTimeMillis()}.jpg")
+                                )
+                                capturedImageUri.value = uri
+                                cameraLauncher.launch(uri)
+                            },
+                            onImageClick = { uri -> selectedImageUri= uri },
+                            selectedImageUri = selectedImageUri,
+                            onRemoveSelectedImage = { selectedImageUri = null }
+                        )
                 } else {
                     IconButton(
                         onClick = { showCamera = true }
