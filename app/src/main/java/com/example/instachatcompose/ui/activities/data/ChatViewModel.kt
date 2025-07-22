@@ -635,7 +635,7 @@ data class Message(
     val senderId: String = "",
     val senderName: String = "",
     val receiverId: String = "",
-    val text: String = "",
+    var text: String = "",
     val iv: String = "",
     val replyToIv: String? = null,
     val timestamp: Long = 0,

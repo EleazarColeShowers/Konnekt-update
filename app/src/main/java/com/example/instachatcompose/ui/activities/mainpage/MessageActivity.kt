@@ -485,10 +485,7 @@ fun CreateGroupBottomSheet(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 TextButton(onClick = { launcher.launch("image/*") }) {
-                    Text(
-                        text="Select Image",
-                        color= Color(0xFF2F9ECE)
-                    )
+                    Text(text = "Select Image", color = Color(0xFF2F9ECE))
                 }
             }
 
@@ -578,61 +575,66 @@ fun CreateGroupBottomSheet(
                         return@Button
                     }
 
-                    if (groupName.isNotBlank() && currentUserId != null) {
-                        val groupId = "group_${UUID.randomUUID()}"
-                        TempGroupIdHolder.groupId = groupId
+                    if (groupName.isBlank() || currentUserId == null) {
+                        Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
 
-                        val members = selectedFriends.toMutableList().apply {
-                            if (!contains(currentUserId)) add(currentUserId)
-                        }
+                    val groupId = "group_${UUID.randomUUID()}"
+                    TempGroupIdHolder.groupId = groupId
 
-                        val groupData = mapOf(
-                            "groupName" to groupName,
-                            "members" to members.associateWith { true },
-                            "groupImage" to null,
-                            "adminId" to currentUserId
+                    val members = selectedFriends.toMutableList().apply {
+                        if (!contains(currentUserId)) add(currentUserId)
+                    }
+
+                    val groupData = mapOf(
+                        "groupName" to groupName,
+                        "members" to members.associateWith { true },
+                        "groupImage" to null,
+                        "adminId" to currentUserId
+                    )
+
+                    fun notifyMembersAndDismiss() {
+                        NotificationHelper.showNotification(
+                            context,
+                            title = "Group Created",
+                            message = "You have now created \"$groupName\""
                         )
 
-                        fun notifyMembers() {
-                            NotificationHelper.showNotification(
-                                context,
-                                title = "Group Created",
-                                message = "You have now created \"$groupName\""
-                            )
-
-                            val usersRef = FirebaseDatabase.getInstance().getReference("users")
-
-                            selectedFriends.filter { it != currentUserId }.forEach { memberId ->
-                                usersRef.child(memberId).get().addOnSuccessListener { snapshot ->
-                                    val username = snapshot.child("username").getValue(String::class.java) ?: "Someone"
-
-                                    NotificationHelper.showNotification(
-                                        context,
-                                        title = "Added to Group",
-                                        message = "$currentUserName added you to \"$groupName\""
-                                    )
-                                }
+                        val usersRef = FirebaseDatabase.getInstance().getReference("users")
+                        selectedFriends.filter { it != currentUserId }.forEach { memberId ->
+                            usersRef.child(memberId).get().addOnSuccessListener { snapshot ->
+                                val username = snapshot.child("username").getValue(String::class.java) ?: "Someone"
+                                NotificationHelper.showNotification(
+                                    context,
+                                    title = "Added to Group",
+                                    message = "$currentUserName added you to \"$groupName\""
+                                )
                             }
                         }
 
-                        if (groupImageUri != null) {
-                            val storageRef = FirebaseStorage.getInstance().reference
-                                .child("group_images/$groupId/profile_image.jpg")
-                            storageRef.putFile(groupImageUri!!)
-                                .addOnSuccessListener {
-                                    storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
-                                        val groupDataWithImage = groupData.toMutableMap().apply {
-                                            this["groupImage"] = downloadUrl.toString()
+                        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                    }
+
+                    if (groupImageUri != null) {
+                        val storageRef = FirebaseStorage.getInstance().reference
+                            .child("group_images/$groupId/profile_image.jpg")
+                        storageRef.putFile(groupImageUri!!)
+                            .addOnSuccessListener {
+                                storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
+                                    val groupDataWithImage = groupData.toMutableMap().apply {
+                                        this["groupImage"] = downloadUrl.toString()
+                                    }
+
+                                    FirebaseDatabase.getInstance().getReference("chats")
+                                        .child(groupId)
+                                        .setValue(groupDataWithImage)
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
+                                            notifyMembersAndDismiss()
                                         }
 
-                                        FirebaseDatabase.getInstance().getReference("chats")
-                                            .child(groupId)
-                                            .setValue(groupDataWithImage)
-                                            .addOnSuccessListener {
-                                                notifyMembers()
-                                                Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
-                                            }
-
+                                    CoroutineScope(Dispatchers.IO).launch {
                                         val groupEntity = GroupEntity(
                                             groupId = groupId,
                                             userId = currentUserId,
@@ -640,33 +642,25 @@ fun CreateGroupBottomSheet(
                                             groupImageUri = downloadUrl.toString(),
                                             memberIds = members.joinToString(",")
                                         )
-
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            db.groupDao().insertGroup(groupEntity)
-                                        }
+                                        db.groupDao().insertGroup(groupEntity)
                                     }
                                 }
-                                .addOnFailureListener {
-                                    Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
-                                }
-                        } else {
-                            FirebaseDatabase.getInstance().getReference("chats")
-                                .child(groupId)
-                                .setValue(groupData)
-                                .addOnSuccessListener {
-                                    notifyMembers()
-                                    Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
-                                }
-                                .addOnFailureListener {
-                                    Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
-                                }
-                        }
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
+                            }
                     } else {
-                        Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
+                        FirebaseDatabase.getInstance().getReference("chats")
+                            .child(groupId)
+                            .setValue(groupData)
+                            .addOnSuccessListener {
+                                Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
+                                notifyMembersAndDismiss()
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
+                            }
                     }
-
-                    scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
-
                 }) {
                     Text("Create")
                 }
@@ -1540,21 +1534,31 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 for (messageSnapshot in snapshot.children) {
                     val message = messageSnapshot.getValue(Message::class.java)
                     if (message != null) {
-                        if (message.deletedFor?.containsKey(currentUserId) == true) {
-                            continue
-                        }
+                        if (message.deletedFor?.containsKey(currentUserId) == true) continue
+
                         if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
                             messageSnapshot.ref.child("seen").setValue(true)
+                        }
+
+                        if (!message.iv.isNullOrBlank() && !message.text.isNullOrBlank()) {
+                            try {
+                                message.text = MessageCrypto.decrypt(message.text, message.iv)
+                            } catch (e: Exception) {
+                                Log.e("ChatScreen", "Decryption failed: ${e.message}")
+                                message.text = "[error decrypting]"
+                            }
                         }
                         messageList.add(message)
                     }
                 }
+//                viewModel.updateMessages(messageList)
             }
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatScreen", "Failed to load messages: ${error.message}")
             }
         })
     }
+
     DisposableEffect(Unit) {
         isChatOpen = true
         onDispose { isChatOpen = false }
@@ -1824,55 +1828,39 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 }
 
                 IconButton(onClick = {
-                    if (messageText.isNotBlank()) {
-                        KeystoreHelper.generateKeyIfNecessary()
-                        if (editingMessageId != null) {
-                            val (encryptedText, ivString) = MessageCrypto.encrypt(messageText.trim())
-                            val messageUpdates = mapOf(
-                                "text" to encryptedText,
-                                "iv" to ivString,
-                                "edited" to true
-                            )
-                            messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
-                                .addOnSuccessListener {
-                                    editingMessageId = null
-                                    messageText = ""
-                                }
-                        } else {
-                            val messageKey = messagesRef.push().key
-                            if (messageKey != null) {
-                                val (encryptedText, ivString) = MessageCrypto.encrypt(messageText)
-                                val replyEncrypted = replyingTo?.text?.let { MessageCrypto.encrypt(it).first }
+                    if (messageText.isBlank()) return@IconButton
+                    KeystoreHelper.generateKeyIfNecessary()
+                    try {
+                        val (encryptedText, ivString) = MessageCrypto.encrypt(messageText.trim())
+                        val messageKey = messagesRef.push().key ?: return@IconButton
+                        val (replyEncryptedText, replyIvString) = replyingTo?.text?.let {
+                            MessageCrypto.encrypt(it.trim())
+                        } ?: (null to null)
 
-                                val (replyEncryptedText, replyIvString) = replyingTo?.text
-                                    ?.let { MessageCrypto.encrypt(it) }
-                                    ?: (null to null)
-
-                                val newMessage = Message(
-                                    id = messageKey,
-                                    senderId = currentUserId,
-                                    senderName = currentUsername,
-                                    receiverId = receiverUserId,
-                                    text = encryptedText,
-                                    iv = ivString,
-                                    timestamp = System.currentTimeMillis() + (0..999).random(),
-                                    seen = false,
-                                    replyTo = replyEncryptedText,
-                                    replyToIv = replyIvString,
-                                    edited = false
-                                )
-
-                                messagesRef.child(messageKey).setValue(newMessage)
-                                messageText = ""
-                                replyingTo = null
-                            }
-                        }
+                        val newMessage = Message(
+                            id = messageKey,
+                            senderId = currentUserId,
+                            senderName = currentUsername,
+                            receiverId = receiverUserId,
+                            text = encryptedText,
+                            iv = ivString,
+                            timestamp = System.currentTimeMillis(),
+                            seen = false,
+                            replyTo = replyEncryptedText,
+                            replyToIv = replyIvString,
+                            edited = false
+                        )
+                        messagesRef.child(messageKey).setValue(newMessage)
+                        messageText = ""
+                        replyingTo = null
+                    } catch (e: Exception) {
+                        Log.e("ChatScreen", "Encryption failed: ${e.message}")
                     }
-                })
-                {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                }) {
+                    Icon(Icons.Default.Send, contentDescription = "Send")
                 }
             }
+
         }
     }
     if (selectedImageUri != null) {
@@ -1906,17 +1894,22 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             }
         }
     }
-
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) -> Unit, onEdit: (Message) -> Unit, onDeleteForSelf: (Message) -> Unit, onDeleteForEveryone: (Message) -> Unit, isGroupChat: Boolean= false) {
+fun MessageBubble(
+    message: Message,
+    currentUserId: String,
+    onReply: (Message) -> Unit,
+    onEdit: (Message) -> Unit,
+    onDeleteForSelf: (Message) -> Unit,
+    onDeleteForEveryone: (Message) -> Unit,
+    isGroupChat: Boolean = false
+) {
     val senderColorMap = remember { mutableMapOf<String, Color>() }
     val senderColor = remember(message.senderId) {
-        senderColorMap.getOrPut(message.senderId) {
-            generateColorFromId(message.senderId)
-        }
+        senderColorMap.getOrPut(message.senderId) { generateColorFromId(message.senderId) }
     }
     val isSentByUser = message.senderId == currentUserId
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -1932,13 +1925,13 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
 
     val offsetX by animateFloatAsState(
         targetValue = rawOffsetX,
-        animationSpec = tween(durationMillis = 200), label = ""
+        animationSpec = tween(durationMillis = 200),
+        label = ""
     )
     var menuPositionPx by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
-    var menuPositionDp by remember {
-        mutableStateOf(DpOffset(0.dp, 0.dp))
-    }
+    var menuPositionDp by remember { mutableStateOf(DpOffset(0.dp, 0.dp)) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
@@ -1957,7 +1950,6 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                     ) { change, dragAmount ->
                         change.consume()
                         rawOffsetX = (rawOffsetX + dragAmount * 0.5f).coerceIn(-50f, 50f)
-
                         if (!hasReplied && (rawOffsetX <= -50f || rawOffsetX >= 50f)) {
                             onReply(message)
                             hasReplied = true
@@ -1966,7 +1958,6 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                 }
                 .onGloballyPositioned { coordinates ->
                     menuPositionPx = coordinates.boundsInWindow().bottomLeft
-
                     menuPositionDp = with(density) {
                         DpOffset(menuPositionPx.x.toDp(), menuPositionPx.y.toDp())
                     }
@@ -1981,16 +1972,17 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
             Column {
                 if (isGroupChat && !isSentByUser) {
                     Text(
-                        text = message.senderName ,
+                        text = message.senderName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = senderColor,
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
+
                 message.replyTo?.let {
                     val replyTextDecrypted = try {
-                        MessageCrypto.decrypt(message.replyTo.trim() ?: "", message.replyToIv?.trim() ?: "")
+                        MessageCrypto.decrypt(message.replyTo.trim(), message.replyToIv?.trim() ?: "")
                     } catch (e: Exception) {
                         "[error decrypting reply]"
                     }
@@ -2001,30 +1993,24 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
-                val mainTextDecrypted = try {
-                    MessageCrypto.decrypt(message.text.trim(), message.iv.trim() ?: "")
-                } catch (e: Exception) {
-                    Log.e("Decryption", "Error: ${e.message}", e)
-                    "[error decrypting message: ${e.message ?: "Unknown error"}]"
-                }
 
                 val annotatedText = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
                     var currentIndex = 0
-                    regex.findAll(mainTextDecrypted).forEach { match ->
-                        append(mainTextDecrypted.substring(currentIndex, match.range.first))
+                    regex.findAll(message.text).forEach { match ->
+                        append(message.text.substring(currentIndex, match.range.first))
                         withStyle(SpanStyle(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)) {
                             append(match.value)
                         }
                         currentIndex = match.range.last + 1
                     }
-                    append(mainTextDecrypted.substring(currentIndex))
+                    append(message.text.substring(currentIndex))
                 }
 
                 Text(text = annotatedText, color = textColor)
-
             }
         }
+
         Box(
             modifier = Modifier
                 .shadow(8.dp, shape = RoundedCornerShape(16.dp))
@@ -2043,17 +2029,15 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                     }
                 )
                 HorizontalDivider()
-                if (isSentByUser) {
-                    if (isEditable) {
-                        DropdownMenuItem(
-                            text = { Text("Edit") },
-                            onClick = {
-                                onEdit(message)
-                                showMenu = false
-                            }
-                        )
-                        HorizontalDivider()
-                    }
+                if (isSentByUser && isEditable) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = {
+                            onEdit(message)
+                            showMenu = false
+                        }
+                    )
+                    HorizontalDivider()
                 }
                 DropdownMenuItem(
                     text = { Text("Delete for Self") },
