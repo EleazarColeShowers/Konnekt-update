@@ -10,6 +10,8 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.instachatcompose.ui.activities.mainpage.ChatItem
 import com.example.instachatcompose.ui.activities.mainpage.Friend
@@ -29,9 +31,12 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class ChatViewModel(application: Application) : AndroidViewModel(application)  {
@@ -52,13 +57,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
     val archivedFriends: StateFlow<List<Friend>> = _archivedFriends
     private val _archivedGroups = MutableStateFlow<List<GroupChat>>(emptyList())
     val archivedGroups: StateFlow<List<GroupChat>> = _archivedGroups
-    private val _archivedItems = MutableStateFlow<List<Any>>(emptyList()) // Unified list
+    private val _archivedItems = MutableStateFlow<List<Any>>(emptyList())
     private val _isArchiveInitialized = MutableStateFlow(false)
     val isArchiveInitialized: StateFlow<Boolean> = _isArchiveInitialized
     private val _isLoadingArchive = MutableStateFlow(true)
     private var requestListener: ChildEventListener? = null
     private val _friendRequestCount = MutableStateFlow(0)
     val friendRequestCount: StateFlow<Int> = _friendRequestCount
+    private var groupListener: ValueEventListener? = null
+
+
+
+    fun updateMessages(newMessages: List<Message>) {
+        _messages.value = newMessages
+    }
+
 
     fun listenForFriendRequests(context: Context, userId: String) {
         createNotificationChannel(context)
@@ -253,6 +266,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
 
                 }
             }
+
         }
     }
 
@@ -627,6 +641,65 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                     onResult(mapOf("username" to "Unknown", "profileImageUri" to ""))
                 }
             })
+    }
+
+    fun observeGroupChats(currentUserId: String) {
+        val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
+        val usersRef = FirebaseDatabase.getInstance().reference.child("users")
+
+        // Avoid adding multiple listeners
+        groupListener?.let { dbRef.removeEventListener(it) }
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val groupChats = mutableListOf<GroupChat>()
+                val allFetchTasks = mutableListOf<Job>()
+
+                for (groupSnapshot in snapshot.children) {
+                    val key = groupSnapshot.key ?: continue
+                    if (!key.startsWith("group_")) continue
+
+                    val membersSnapshot = groupSnapshot.child("members")
+                    val memberIds = membersSnapshot.children.mapNotNull { it.key }
+
+                    if (currentUserId in memberIds) {
+                        val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
+                        val groupId = key.removePrefix("group_")
+                        val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
+
+                        val members = mutableListOf<String>()
+                        val job = CoroutineScope(Dispatchers.IO).launch {
+                            memberIds.forEach { memberId ->
+                                val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
+                                val username = usernameSnapshot.getValue(String::class.java) ?: memberId
+                                members.add(username)
+                            }
+                        }
+                        allFetchTasks.add(job)
+
+                        val groupChat = GroupChat(
+                            groupId = groupId,
+                            groupName = groupName,
+                            members = members,
+                            groupImage = groupImage
+                        )
+                        groupChats.add(groupChat)
+                    }
+                }
+
+                CoroutineScope(Dispatchers.IO).launch {
+                    allFetchTasks.joinAll()
+                    _groupChats.value = groupChats
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                _groupChats.value = emptyList()
+            }
+        }
+
+        dbRef.addValueEventListener(listener)
+        groupListener = listener
     }
 }
 

@@ -894,51 +894,43 @@ suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCor
 
     dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
-            val groupChats = mutableListOf<GroupChat>()
-            val allFetchTasks = mutableListOf<Job>()
+            CoroutineScope(Dispatchers.IO).launch {
+                val groupChats = snapshot.children.mapNotNull { groupSnapshot ->
+                    val key = groupSnapshot.key ?: return@mapNotNull null
+                    if (!key.startsWith("group_")) return@mapNotNull null
 
-            for (groupSnapshot in snapshot.children) {
-                val key = groupSnapshot.key ?: continue
-                if (!key.startsWith("group_")) continue
+                    val membersSnapshot = groupSnapshot.child("members")
+                    val memberIds = membersSnapshot.children.mapNotNull { it.key }
 
-                val membersSnapshot = groupSnapshot.child("members")
-                val memberIds = membersSnapshot.children.mapNotNull { it.key }
+                    if (currentUserId !in memberIds) return@mapNotNull null
 
-                if (currentUserId in memberIds) {
                     val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
                     val groupId = key.removePrefix("group_")
                     val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
 
-                    val members = mutableListOf<String>()
-
-                    val job = CoroutineScope(Dispatchers.IO).launch {
-                        memberIds.forEach { memberId ->
-                            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
-                            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
-                            members.add(username)
-                        }
+                    val members = memberIds.map { memberId ->
+                        val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
+                        usernameSnapshot.getValue(String::class.java) ?: memberId
                     }
-                    allFetchTasks.add(job)
 
-                    val groupChat = GroupChat(
+                    GroupChat(
                         groupId = groupId,
                         groupName = groupName,
-                        members = members, // This will be populated after usernames are fetched
+                        members = members,
                         groupImage = groupImage
                     )
-                    groupChats.add(groupChat)
                 }
-            }
-            CoroutineScope(Dispatchers.IO).launch {
-                allFetchTasks.joinAll()
+
                 cont.resume(groupChats)
             }
         }
+
         override fun onCancelled(error: DatabaseError) {
             cont.resume(emptyList())
         }
     })
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -962,7 +954,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     LaunchedEffect(Unit) {
         viewModel.fetchArchivedChats(currentUserId)
     }
-    LaunchedEffect(isArchiveInitialized) {
+    LaunchedEffect(groupChats,isArchiveInitialized) {
         if (isArchiveInitialized) {
             viewModel.refreshCombinedChatList(
                 currentUserId,
@@ -1103,7 +1095,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             showGroupDialog = false
         }
     )
-
 }
 
 @Composable
@@ -1551,7 +1542,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         messageList.add(message)
                     }
                 }
-//                viewModel.updateMessages(messageList)
+                viewModel.updateMessages(messageList)
             }
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatScreen", "Failed to load messages: ${error.message}")
