@@ -120,19 +120,7 @@ fun SettingsPage() {
         SettingOption("Change Username") { showDialog = true }
         SettingOption("Change Bio") { showBioDialog = true }
         SettingOption("Change Profile Picture") { pickImageLauncher.launch("image/*") }
-        SettingOption("Privacy Settings") { }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Save Settings Button
-        Button(
-            onClick = { /* Save logic here */ },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F9ECE))
-        ) {
-            Text("Save Settings", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
 
         Spacer(modifier = Modifier.height(20.dp))
 

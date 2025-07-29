@@ -594,27 +594,40 @@ fun CreateGroupBottomSheet(
                         "adminId" to currentUserId
                     )
 
-                    fun notifyMembersAndDismiss() {
+                    fun notifyMembersAndDismiss(creatorId: String) {
+                        val iAmCreator = currentUserId == creatorId
+
+                        // If I'm NOT the creator, don't show anything here.
+                        if (!iAmCreator) {
+                            scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                            return
+                        }
+
+                        // Creator-only local notification
                         NotificationHelper.showNotification(
                             context,
                             title = "Group Created",
                             message = "You have now created \"$groupName\""
                         )
 
+                        // Notify everyone else
                         val usersRef = FirebaseDatabase.getInstance().getReference("users")
-                        selectedFriends.filter { it != currentUserId }.forEach { memberId ->
-                            usersRef.child(memberId).get().addOnSuccessListener { snapshot ->
-                                val username = snapshot.child("username").getValue(String::class.java) ?: "Someone"
-                                NotificationHelper.showNotification(
-                                    context,
-                                    title = "Added to Group",
-                                    message = "$currentUserName added you to \"$groupName\""
-                                )
+                        selectedFriends
+                            .filter { it != creatorId }
+                            .forEach { memberId ->
+                                usersRef.child(memberId).get().addOnSuccessListener {
+                                    // Ideally, send a PUSH to this member, not a local notification on the creator's device
+                                    NotificationHelper.showNotification(
+                                        context,
+                                        title = "Added to Group",
+                                        message = "$currentUserName added you to \"$groupName\""
+                                    )
+                                }
                             }
-                        }
 
                         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
                     }
+
 
                     if (groupImageUri != null) {
                         val storageRef = FirebaseStorage.getInstance().reference
@@ -631,7 +644,7 @@ fun CreateGroupBottomSheet(
                                         .setValue(groupDataWithImage)
                                         .addOnSuccessListener {
                                             Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
-                                            notifyMembersAndDismiss()
+                                            notifyMembersAndDismiss(creatorId = currentUserId)
                                         }
 
                                     CoroutineScope(Dispatchers.IO).launch {
@@ -655,8 +668,21 @@ fun CreateGroupBottomSheet(
                             .setValue(groupData)
                             .addOnSuccessListener {
                                 Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
-                                notifyMembersAndDismiss()
+
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    val groupEntity = GroupEntity(
+                                        groupId = groupId,
+                                        userId = currentUserId,
+                                        groupName = groupName,
+                                        groupImageUri = "", // or null, if your DB allows
+                                        memberIds = members.joinToString(",")
+                                    )
+                                    db.groupDao().insertGroup(groupEntity)
+                                }
+
+                                notifyMembersAndDismiss(creatorId = currentUserId)
                             }
+
                             .addOnFailureListener {
                                 Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
                             }
@@ -952,9 +978,10 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     val groupChats by viewModel.groupChats.collectAsState()
 
     LaunchedEffect(Unit) {
+        viewModel.observeGroupChats(currentUserId)
         viewModel.fetchArchivedChats(currentUserId)
     }
-    LaunchedEffect(groupChats,isArchiveInitialized) {
+    LaunchedEffect(isArchiveInitialized) {
         if (isArchiveInitialized) {
             viewModel.refreshCombinedChatList(
                 currentUserId,
@@ -980,7 +1007,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
             when (item) {
                 is ChatItem.FriendItem -> {
                     val friend = item.friend
-//                    val details = item.details
 
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = {
@@ -1877,7 +1903,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f)
                 )
                 IconButton(onClick = {
-                    // send the image and message logic
                     selectedImageUri = null
                 }) {
                     Icon(Icons.Default.Send, contentDescription = "Send Image")
