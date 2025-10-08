@@ -158,6 +158,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
             }
         }
     }
+    fun updateMessages(chatId: String, newList: List<Message>) {
+        val keyAlias = "chat_$chatId"
+
+        val decryptedList = newList.map { msg ->
+            try {
+                val decrypted = CryptoUtil.decrypt(keyAlias, msg.text, msg.iv)
+                msg.copy(decryptedText = decrypted)
+            } catch (e: Exception) {
+                msg.copy(decryptedText = "[error]")
+            }
+        }
+
+        _messages.value = decryptedList
+    }
+
 
 
     fun loadGroupChats(currentUserId: String) {
@@ -240,7 +255,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application)  {
                         }
                     }
                     messageList.add(0, message)
-                    _messages.value = messageList.sortedByDescending { it.timestamp }
+                    updateMessages(chatId, messageList.sortedByDescending { it.timestamp })
                 }
             }
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
@@ -433,10 +448,13 @@ data class Message(
     val senderId: String = "",
     val senderName: String = "",
     val receiverId: String = "",
-    val text: String = "",
+    var text: String = "",
+    val iv: String = "",
     val timestamp: Long = 0,
     val seen: Boolean = false,
     val replyTo: String? = null,
     val edited: Boolean = false,
-    val deletedFor: Map<String, Boolean>? = null
+    val deletedFor: Map<String, Boolean>? = null,
+    val replyToIv: String? = null,
+    var decryptedText: String? = null
 )

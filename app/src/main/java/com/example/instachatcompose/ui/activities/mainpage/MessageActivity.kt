@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -130,13 +129,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
 import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
 import com.example.instachatcompose.ui.activities.data.AppDatabase
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
+import com.example.instachatcompose.ui.activities.data.CryptoUtil
 import com.example.instachatcompose.ui.activities.data.GroupEntity
 import com.example.instachatcompose.ui.activities.data.Message
 import com.google.firebase.storage.FirebaseStorage
@@ -991,7 +990,7 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
         "${friend.friendId}_${currentUserId}"
     }
 
-    var lastMessage by remember { mutableStateOf("Loading...") }
+    var lastMessage by remember { mutableStateOf("Send Hi to your new friend!") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
 
     DisposableEffect(chatId) {
@@ -1191,11 +1190,9 @@ sealed class ChatItem {
     ) : ChatItem()
 }
 
-
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-
     // State and context
     var currentUsername by remember { mutableStateOf("") }
     var messageText by remember { mutableStateOf("") }
@@ -1204,8 +1201,16 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var cursorPosition by remember { mutableIntStateOf(0) }
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
+    fun setReplyingTo(message: Message) {
+        val decrypted = message.decryptedText ?: CryptoUtil.decrypt(
+            message.iv, message.text,
+            encodedIv = TODO()
+        )
+        replyingTo = message.copy(decryptedText = decrypted)
+    }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
+
 
     val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
@@ -1239,19 +1244,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
 
-    val onMessageTextChange: (String) -> Unit = { newText ->
-        messageText = newText
-        cursorPosition = newText.length
-        val lastAtIndex = newText.lastIndexOf("@", cursorPosition - 1)
-        if (lastAtIndex != -1 && (lastAtIndex == 0 || newText[lastAtIndex - 1].isWhitespace())) {
-            val query = newText.substring(lastAtIndex + 1, cursorPosition)
-            showMentionDropdown = true
-            mentionQuery = query
-        } else {
-            showMentionDropdown = false
-            mentionQuery = ""
-        }
-    }
 
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
@@ -1266,20 +1258,17 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 for (messageSnapshot in snapshot.children) {
                     val message = messageSnapshot.getValue(Message::class.java)
                     if (message != null) {
-                        if (message.deletedFor?.containsKey(currentUserId) == true) {
-                            continue
-                        }
-                        if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
-                            messageSnapshot.ref.child("seen").setValue(true)
-                        }
                         messageList.add(message)
                     }
                 }
+                viewModel.updateMessages(chatId, messageList)
             }
+
             override fun onCancelled(error: DatabaseError) {
                 Log.e("ChatScreen", "Failed to load messages: ${error.message}")
             }
         })
+
     }
     DisposableEffect(Unit) {
         isChatOpen = true
@@ -1371,7 +1360,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     MessageBubble(
                         message = message,
                         currentUserId = currentUserId,
-                        onReply = { replyingTo = it },
+                        onReply = { setReplyingTo(it) },
                         isGroupChat = true,
                         onEdit ={ messageToEdit ->
                             messageText = messageToEdit.text
@@ -1394,7 +1383,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             } else {
                                 Log.e("ChatScreen", "Error: Message ID is blank")
                             }
-                        }
+                        },
+                        messages = messages
 
                     )
                 }
@@ -1428,7 +1418,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             fontSize = 14.sp
                         )
                         Text(
-                            text = message.text,
+                            text = message.decryptedText ?: "[encrypted]",
                             color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 14.sp
                         )
@@ -1527,9 +1517,15 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
+                        val keyAlias = "chat_${chatId}"
+                        CryptoUtil.generateAesKeyIfNeeded(keyAlias) // make sure key exists
+                        val (encryptedText, iv) = CryptoUtil.encrypt(keyAlias, messageText)
+
                         if (editingMessageId != null) {
+                            // ✏️ Update existing message
                             val messageUpdates = mapOf(
-                                "text" to messageText,
+                                "text" to encryptedText,
+                                "iv" to iv,
                                 "edited" to true
                             )
                             messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
@@ -1538,6 +1534,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                     messageText = ""
                                 }
                         } else {
+                            // ✉️ New message
                             val messageKey = messagesRef.push().key
                             if (messageKey != null) {
                                 val newMessage = Message(
@@ -1545,22 +1542,24 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                     senderId = currentUserId,
                                     senderName = currentUsername,
                                     receiverId = receiverUserId,
-                                    text = messageText,
+                                    text = encryptedText,
+                                    iv = iv,   // 🔥 store it!
                                     timestamp = System.currentTimeMillis() + (0..999).random(),
                                     seen = false,
-                                    replyTo = replyingTo?.text,
-                                    edited = false // New messages are not edited initially
+                                    replyTo = replyingTo?.id,
+                                    edited = false
                                 )
+
                                 messagesRef.child(messageKey).setValue(newMessage)
                                 messageText = ""
                                 replyingTo = null
                             }
                         }
                     }
-                })
-                {
+                }) {
                     Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
+
             }
         }
     }
@@ -1568,7 +1567,16 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) -> Unit, onEdit: (Message) -> Unit, onDeleteForSelf: (Message) -> Unit, onDeleteForEveryone: (Message) -> Unit, isGroupChat: Boolean= false) {
+fun MessageBubble(
+    message: Message,
+    currentUserId: String,
+    messages: List<Message>,
+    onReply: (Message) -> Unit,
+    onEdit: (Message) -> Unit,
+    onDeleteForSelf: (Message) -> Unit,
+    onDeleteForEveryone: (Message) -> Unit,
+    isGroupChat: Boolean = false
+) {
     val senderColorMap = remember { mutableMapOf<String, Color>() }
     val senderColor = remember(message.senderId) {
         senderColorMap.getOrPut(message.senderId) {
@@ -1596,6 +1604,7 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
     var menuPositionDp by remember {
         mutableStateOf(DpOffset(0.dp, 0.dp))
     }
+    
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
@@ -1645,25 +1654,34 @@ fun MessageBubble(message: Message, currentUserId: String, onReply: (Message) ->
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
-                message.replyTo?.let {
+                message.replyTo?.let { replyId ->
+                    val repliedMessage = messages.find { it.id == replyId }
+                    val repliedText = repliedMessage?.decryptedText
+                        ?: repliedMessage?.let { CryptoUtil.decrypt(
+                            it.iv, it.text,
+                            encodedIv = TODO()
+                        ) }
+                        ?: "[message unavailable]"
+
                     Text(
-                        text = "Replying to: $it",
-                        color = Color.Gray,
+                        text = "Replying to: $repliedText",
+                        color = MaterialTheme.colorScheme.onBackground,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
                 val annotated = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
+                    val rawText = message.decryptedText ?: "[encrypted]"
                     var currentIndex = 0
-                    regex.findAll(message.text).forEach { match ->
-                        append(message.text.substring(currentIndex, match.range.first))
+                    regex.findAll(rawText).forEach { match ->
+                        append(rawText.substring(currentIndex, match.range.first))
                         withStyle(SpanStyle(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)) {
                             append(match.value)
                         }
                         currentIndex = match.range.last + 1
                     }
-                    append(message.text.substring(currentIndex))
+                    append(rawText.substring(currentIndex))
                 }
 
                 Text(text = annotated, color = textColor)
