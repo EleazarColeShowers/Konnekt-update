@@ -2,7 +2,7 @@ package com.example.instachatcompose.ui.activities
 
 import android.app.Application
 import androidx.room.Room
-import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.local.AppDatabase
 
 
 class KonnektApp : Application() {

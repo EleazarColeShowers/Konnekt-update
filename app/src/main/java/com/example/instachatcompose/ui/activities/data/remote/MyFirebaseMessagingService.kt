@@ -1,9 +1,6 @@
-package com.example.instachatcompose.ui
+package com.example.instachatcompose.ui.activities.data.remote
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Context
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.instachatcompose.R
@@ -26,7 +23,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setContentText(body ?: "")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(0, builder.build())
     }
 
@@ -36,4 +33,3 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         Log.d("FCM", "New token: $token")
     }
 }
-

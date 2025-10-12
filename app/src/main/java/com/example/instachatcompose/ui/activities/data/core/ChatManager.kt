@@ -1,9 +1,9 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.core
 
 import android.Manifest
 import android.content.Context
 import androidx.activity.result.ActivityResultLauncher
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.instachatcompose.ui.activities.data.ChatViewModel
 
 object ChatManager {
     private var hasStartedListening = false

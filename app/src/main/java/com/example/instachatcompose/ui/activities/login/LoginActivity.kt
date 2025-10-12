@@ -55,11 +55,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.room.Room
 import com.example.instachatcompose.R
-import com.example.instachatcompose.ui.activities.data.AppDatabase
-import com.example.instachatcompose.ui.activities.data.SecureStorage
-import com.example.instachatcompose.ui.activities.data.UserEntity
+import com.example.instachatcompose.ui.activities.data.local.AppDatabase
+import com.example.instachatcompose.ui.activities.data.storage.SecureStorage
+import com.example.instachatcompose.ui.activities.data.local.UserEntity
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.signup.CustomCheckbox
 import com.example.instachatcompose.ui.activities.signup.SignUpActivity

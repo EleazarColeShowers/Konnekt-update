@@ -1,4 +1,4 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.storage
 
 import android.content.Context
 import android.content.SharedPreferences

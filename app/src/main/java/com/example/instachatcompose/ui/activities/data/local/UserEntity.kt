@@ -1,4 +1,4 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.local
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -42,7 +42,7 @@ data class MessageEntity(
     val edited: Boolean
 )
 
-@Entity(tableName = "groups")
+@Entity(tableName = "group_table")
 data class GroupEntity(
     @PrimaryKey val groupId: String,
     val userId: String,

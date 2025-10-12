@@ -1,9 +1,8 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.crypto
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator

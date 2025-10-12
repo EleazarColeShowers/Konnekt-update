@@ -1,6 +1,7 @@
 package com.example.instachatcompose.ui.activities.mainpage
 
 import android.Manifest
+import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -133,10 +134,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
-import com.example.instachatcompose.ui.activities.data.AppDatabase
+import com.example.instachatcompose.ui.activities.data.local.AppDatabase
+import com.example.instachatcompose.ui.activities.data.repository.ChatRepository
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
-import com.example.instachatcompose.ui.activities.data.CryptoUtil
-import com.example.instachatcompose.ui.activities.data.GroupEntity
+import com.example.instachatcompose.ui.activities.data.ChatViewModelFactory
+import com.example.instachatcompose.ui.activities.data.crypto.CryptoUtil
+import com.example.instachatcompose.ui.activities.data.remote.FirebaseDataSource
+import com.example.instachatcompose.ui.activities.data.local.GroupEntity
+import com.example.instachatcompose.ui.activities.data.local.LocalDataSource
 import com.example.instachatcompose.ui.activities.data.Message
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
@@ -178,8 +183,18 @@ fun MessagePage() {
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
     var searchQuery by remember { mutableStateOf("") }
-    val context= LocalContext.current
-    val viewModel: ChatViewModel = viewModel()
+    val context = LocalContext.current
+    val app = context.applicationContext as Application
+
+    val viewModel: ChatViewModel = viewModel(
+        factory = ChatViewModelFactory(
+            app,
+            ChatRepository(
+                FirebaseDataSource(),
+                LocalDataSource(AppDatabase.getDatabase(app))
+            )
+        )
+    )
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -909,7 +924,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                 Button(
                     onClick = {
                         friendToRemove?.let { friend ->
-                            viewModel.removeFriendFromDatabase(currentUserId, friend.friendId, friendDao)
+                            viewModel.removeFriendFromDatabase(currentUserId, friend.friendId)
 //                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
 
                             Toast.makeText(
@@ -997,13 +1012,53 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
         val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
 
         val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-                if (messages.isNotEmpty()) {
-                    lastMessage = messages.last().text
-                }
-                hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
-            }
+//            override fun onDataChange(snapshot: DataSnapshot) {
+//                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+//                if (messages.isNotEmpty()) {
+//                    val message = messages.last()
+//                    val decrypted = message.decryptedText ?: runCatching {
+//                        CryptoUtil.decrypt(
+//                            message.iv, message.text,
+//                            encodedIv = message.iv
+//                        )
+//                    }.getOrElse {
+//                        "Encrypted message"
+//                    }
+//
+//                    lastMessage = decrypted
+//                }
+//
+//                hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
+//            }
+override fun onDataChange(snapshot: DataSnapshot) {
+    val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+    if (messages.isNotEmpty()) {
+        val message = messages.last()
+        Log.d("FriendRow", "Fetched last message: ${message.text}")
+        Log.d("FriendRow", "IV: ${message.iv}")
+
+        val decrypted = message.decryptedText ?: runCatching {
+            Log.d("FriendRow", "Attempting to decrypt message...")
+            val result = CryptoUtil.decrypt(
+                message.iv,
+                encryptedText = message.text,
+                encodedIv = message.iv // adjust if Base64 encoded
+            )
+            Log.d("FriendRow", "Decryption successful: $result")
+            result
+        }.getOrElse { e ->
+            Log.e("FriendRow", "Decryption failed: ${e.message}", e)
+            "Encrypted message"
+        }
+
+        lastMessage = decrypted
+    } else {
+        Log.d("FriendRow", "No messages found for chatId: $chatId")
+    }
+
+    hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
+}
+
 
             override fun onCancelled(error: DatabaseError) {
                 Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")

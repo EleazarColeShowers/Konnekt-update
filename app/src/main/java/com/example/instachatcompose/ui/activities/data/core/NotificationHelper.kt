@@ -1,4 +1,4 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.core
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

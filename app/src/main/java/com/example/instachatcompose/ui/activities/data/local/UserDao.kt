@@ -1,4 +1,4 @@
-package com.example.instachatcompose.ui.activities.data
+package com.example.instachatcompose.ui.activities.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
@@ -54,13 +54,13 @@ interface GroupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGroup(group: GroupEntity)
 
-    @Query("SELECT * FROM groups")
+    @Query("SELECT * FROM group_table")
     fun getAllGroups(): Flow<List<GroupEntity>>
 
-    @Query("DELETE FROM groups WHERE groupId = :groupId")
+    @Query("DELETE FROM group_table WHERE groupId = :groupId")
     suspend fun deleteGroup(groupId: String)
 
-    @Query("SELECT * FROM groups WHERE userId = :userId")
+    @Query("SELECT * FROM group_table WHERE userId = :userId")
     fun getGroupsForUser(userId: String): Flow<List<GroupEntity>>
 
 }

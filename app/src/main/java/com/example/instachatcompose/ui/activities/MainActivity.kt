@@ -2,7 +2,6 @@
 
 package com.example.instachatcompose.ui.activities
 
-import android.app.Application
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -20,14 +19,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.instachatcompose.R
-import com.example.instachatcompose.ui.activities.data.ChatManager
+import com.example.instachatcompose.ui.activities.data.local.AppDatabase
+import com.example.instachatcompose.ui.activities.data.core.ChatManager
+import com.example.instachatcompose.ui.activities.data.repository.ChatRepository
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
+import com.example.instachatcompose.ui.activities.data.ChatViewModelFactory
+import com.example.instachatcompose.ui.activities.data.remote.FirebaseDataSource
+import com.example.instachatcompose.ui.activities.data.local.LocalDataSource
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
@@ -69,7 +74,18 @@ class MainActivity : ComponentActivity() {
                             val chatId = snapshot.getValue(String::class.java)
                             if (!chatId.isNullOrEmpty()) {
                                 // You’ll need a ViewModel instance here
-                                val chatViewModel = ChatViewModel(Application())
+                                val appDb = AppDatabase.getDatabase(applicationContext)
+                                val localDataSource = LocalDataSource(appDb)
+                                val firebaseDataSource = FirebaseDataSource()
+
+// Build the repository with the correct constructor
+                                val repo = ChatRepository(firebaseDataSource, localDataSource)
+
+// Now provide it to the ViewModel
+                                val factory = ChatViewModelFactory(application, repo)
+                                val chatViewModel = ViewModelProvider(this@MainActivity, factory)[ChatViewModel::class.java]
+
+
                                 ChatManager.startListeningForMessages(
                                     applicationContext,
                                     chatId,
