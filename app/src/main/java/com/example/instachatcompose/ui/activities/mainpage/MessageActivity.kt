@@ -151,6 +151,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.math.absoluteValue
@@ -878,7 +879,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                         state = dismissState,
                         backgroundContent = {},
                         content = {
-                            FriendRow(friend, details, navController, currentUserId)
+                            FriendRow(friend, details, navController, currentUserId, viewModel)
                         }
                     )
                 }
@@ -995,7 +996,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
 }
 
 @Composable
-fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavController, currentUserId: String) {
+fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavController, currentUserId: String, viewModel: ChatViewModel) {
     val friendUsername = details["username"] ?: "Unknown"
     val friendProfileUri = details["profileImageUri"] ?: ""
 
@@ -1012,53 +1013,26 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
         val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
 
         val listener = object : ValueEventListener {
-//            override fun onDataChange(snapshot: DataSnapshot) {
-//                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-//                if (messages.isNotEmpty()) {
-//                    val message = messages.last()
-//                    val decrypted = message.decryptedText ?: runCatching {
-//                        CryptoUtil.decrypt(
-//                            message.iv, message.text,
-//                            encodedIv = message.iv
-//                        )
-//                    }.getOrElse {
-//                        "Encrypted message"
-//                    }
-//
-//                    lastMessage = decrypted
-//                }
-//
-//                hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
-//            }
-override fun onDataChange(snapshot: DataSnapshot) {
-    val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-    if (messages.isNotEmpty()) {
-        val message = messages.last()
-        Log.d("FriendRow", "Fetched last message: ${message.text}")
-        Log.d("FriendRow", "IV: ${message.iv}")
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
 
-        val decrypted = message.decryptedText ?: runCatching {
-            Log.d("FriendRow", "Attempting to decrypt message...")
-            val result = CryptoUtil.decrypt(
-                message.iv,
-                encryptedText = message.text,
-                encodedIv = message.iv // adjust if Base64 encoded
-            )
-            Log.d("FriendRow", "Decryption successful: $result")
-            result
-        }.getOrElse { e ->
-            Log.e("FriendRow", "Decryption failed: ${e.message}", e)
-            "Encrypted message"
-        }
+                if (messages.isNotEmpty()) {
+                    val lastMsg = messages.last()
 
-        lastMessage = decrypted
-    } else {
-        Log.d("FriendRow", "No messages found for chatId: $chatId")
-    }
+                    // 🔽 Call suspend function from ViewModel (NOT repo)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val decryptedMessages = viewModel.decryptMessages(chatId, listOf(lastMsg))
+                        withContext(Dispatchers.Main) {
+                            lastMessage = decryptedMessages.firstOrNull()?.decryptedText
+                                ?: "Encrypted message"
+                        }
+                    }
+                } else {
+                    lastMessage = "Send Hi to your new friend!"
+                }
 
-    hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
-}
-
+                hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
+            }
 
             override fun onCancelled(error: DatabaseError) {
                 Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")
@@ -1066,11 +1040,9 @@ override fun onDataChange(snapshot: DataSnapshot) {
         }
 
         db.addValueEventListener(listener)
-
-        onDispose {
-            db.removeEventListener(listener)
-        }
+        onDispose { db.removeEventListener(listener) }
     }
+
 
     Row(
         modifier = Modifier

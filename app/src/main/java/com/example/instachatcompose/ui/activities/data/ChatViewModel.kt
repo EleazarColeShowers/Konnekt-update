@@ -757,6 +757,10 @@ class ChatViewModel(
         }
     }
 
+    suspend fun decryptMessages(chatId: String, messages: List<Message>): List<Message> {
+        return repo.decryptMessages(chatId, messages)
+    }
+
 
     override fun onCleared() {
         super.onCleared()
