@@ -120,6 +120,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -282,7 +283,7 @@ fun MessagePage() {
                 }
 
                 composable("archives") {
-                    ArchiveScreen(navController = navController)
+                    ArchiveScreen()
                 }
 
             }
@@ -323,14 +324,29 @@ fun showNotification(context: Context) {
 }
 
 @Composable
-fun ArchiveScreen(navController: NavController) {
+fun ArchiveScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text("Archived Messages", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        // TODO: Show archived messages here
+        Image(
+            painter = painterResource(id = R.drawable.coming_soon),
+            contentDescription = "Coming Soon",
+            modifier = Modifier
+                .size(200.dp)
+                .padding(bottom = 24.dp),
+            contentScale = ContentScale.Fit
+        )
+
+        Text(
+            text = "Archive feature is coming soon!",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF2F9ECE)
+        )
     }
 }
 
@@ -702,7 +718,7 @@ fun User(username: String, profilePicUrl: String?, userId: String,   searchQuery
                 ),
             )
             Text(
-                text = "Archives(1)",
+                text = "Archives()",
                 modifier = Modifier.clickable {
                     navController.navigate("archives")
                 },
@@ -845,8 +861,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
-    val db = AppDatabase.getDatabase(context)
-    val friendDao = db.friendDao()
     val combinedList by viewModel.combinedChatList.collectAsState()
 
     LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {
