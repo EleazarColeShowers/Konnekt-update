@@ -135,6 +135,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
+import com.example.instachatcompose.ui.activities.calls.CallActivity
 import com.example.instachatcompose.ui.activities.data.local.AppDatabase
 import com.example.instachatcompose.ui.activities.data.repository.ChatRepository
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
@@ -918,7 +919,8 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             GroupAsFriendRow(
                                 group = item.group,
                                 navController = navController,
-                                currentUserId = currentUserId
+                                currentUserId = currentUserId,
+                                viewModel = viewModel
                             )
                         }
                     )
@@ -1121,12 +1123,18 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
 }
 
 @Composable
-fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUserId: String) {
-    var lastMessage by remember { mutableStateOf("Loading...") }
+fun GroupAsFriendRow(
+    group: GroupChat,
+    navController: NavController,
+    currentUserId: String,
+    viewModel: ChatViewModel
+) {
+    var lastMessage by remember { mutableStateOf("No messages yet") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
 
     DisposableEffect(group.groupId) {
         val db = Firebase.database.reference
+            .child("chats")
             .child(group.groupId)
             .child("messages")
 
@@ -1135,8 +1143,21 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                 val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
                 if (messages.isNotEmpty()) {
                     val latestMessage = messages.last()
-                    val senderName = latestMessage.senderName
-                    lastMessage = "$senderName: ${latestMessage.text}"
+
+                    // Decrypt last message text
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val decrypted = viewModel.decryptMessages(
+                            "group_${group.groupId}",
+                            listOf(latestMessage)
+                        )
+
+                        withContext(Dispatchers.Main) {
+                            val decryptedText = decrypted.firstOrNull()?.decryptedText
+                                ?: "Encrypted message"
+                            val senderName = latestMessage.senderName ?: "Unknown"
+                            lastMessage = "$senderName: $decryptedText"
+                        }
+                    }
 
                     hasUnreadMessages = messages.any {
                         it.receiverId == currentUserId && !it.seen
@@ -1152,10 +1173,7 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
         }
 
         db.addValueEventListener(listener)
-
-        onDispose {
-            db.removeEventListener(listener)
-        }
+        onDispose { db.removeEventListener(listener) }
     }
 
     Row(
@@ -1168,9 +1186,9 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                     ?.apply {
                         set("groupId", group.groupId)
                         set("groupName", group.groupName)
-                        set("groupImageUri", group.groupImage )
+                        set("groupImageUri", group.groupImage)
                         set("currentUserId", currentUserId)
-                        set("chatId", group.groupId)
+                        set("chatId", "group_${group.groupId}")
                         set("isGroupChat", true)
                     }
                 navController.navigate("chat")
@@ -1194,7 +1212,9 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                     .background(Color.Gray)
             )
         }
+
         Spacer(modifier = Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = group.groupName,
@@ -1207,6 +1227,7 @@ fun GroupAsFriendRow(group: GroupChat, navController: NavController, currentUser
                 overflow = TextOverflow.Ellipsis
             )
         }
+
         if (hasUnreadMessages) {
             Box(
                 modifier = Modifier
@@ -1845,7 +1866,12 @@ fun BottomAppBar(username: String,profilePic: Uri) {
             isActive = activeItem == BottomAppBarItem.Calls,
             activeIcon = R.drawable.bottombar_activecallspage,
             passiveIcon = R.drawable.bottombar_passivecallspage,
-            onClick = { activeItem = BottomAppBarItem.Calls }
+            onClick = {
+                activeItem = BottomAppBarItem.Calls
+                val intent = Intent(context, CallActivity::class.java)
+                context.startActivity(intent)
+            }
+
         )
 
         BottomAppBarItem(
@@ -1890,3 +1916,31 @@ fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveI
         )
     }
 }
+
+@Composable
+fun CallScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.coming_soon),
+            contentDescription = "Coming Soon",
+            modifier = Modifier
+                .size(200.dp)
+                .padding(bottom = 24.dp),
+            contentScale = ContentScale.Fit
+        )
+
+        Text(
+            text = "Archive feature is coming soon!",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF2F9ECE)
+        )
+    }
+}
+
