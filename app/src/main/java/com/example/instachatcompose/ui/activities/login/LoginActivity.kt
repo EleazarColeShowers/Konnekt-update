@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.data.crypto.CryptoUtil
 import com.example.instachatcompose.ui.activities.data.local.AppDatabase
 import com.example.instachatcompose.ui.activities.data.storage.SecureStorage
 import com.example.instachatcompose.ui.activities.data.local.UserEntity
@@ -66,9 +67,11 @@ import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.database
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -422,15 +425,25 @@ fun performLogin(
                 val user = auth.currentUser
                 if (user != null) {
                     val userId = user.uid
-//                    onSuccess(userId)
+
+                    // ✅ Ensure RSA key pair exists locally
+                    CryptoUtil.generateRsaKeyPairIfNeeded(userId)
+
+                    // ✅ Upload public key again if needed (e.g. after reinstall)
+                    val publicKeyBase64 = CryptoUtil.getPublicKeyBase64(userId)
+                    Firebase.database.reference
+                        .child("users")
+                        .child(userId)
+                        .child("publicKey")
+                        .setValue(publicKeyBase64)
+
+                    // ✅ Continue to fetch user profile
                     fetchUserProfile(
-                        context,  // Pass the required context
+                        context,
                         userId,
-                        onSuccess,
+                        onSuccess
                     )
                 }
-
-
 
                 Toast.makeText(context, "Successfully logged in", Toast.LENGTH_SHORT).show()
             } else {
@@ -441,6 +454,7 @@ fun performLogin(
             Toast.makeText(context, "Error Occurred ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
 }
+
 
 fun fetchUserProfile(
     context: Context,

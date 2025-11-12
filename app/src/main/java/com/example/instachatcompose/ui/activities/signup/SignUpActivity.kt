@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.instachatcompose.R
+import com.example.instachatcompose.ui.activities.data.crypto.CryptoUtil
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DatabaseReference
@@ -485,14 +486,25 @@ fun performSignUp(auth: FirebaseAuth, context: ComponentActivity, email: String,
     }
 
     auth.createUserWithEmailAndPassword(email, password).addOnCompleteListener(context) { task ->
-            if (task.isSuccessful) {
-                createUser(username= usernameTxt, email = email)
-                val intent = Intent(context, ProfileSetUp::class.java)
-                context.startActivity(intent)
+        if (task.isSuccessful) {
+            createUser(username = usernameTxt, email = email)
 
-                Toast.makeText(context, "Successfully sign up", Toast.LENGTH_SHORT).show()
-                onSuccess()
-            } else {
+            // 🔐 Generate RSA key pair for this user
+            val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@addOnCompleteListener
+            CryptoUtil.generateRsaKeyPairIfNeeded(userId)
+
+            // 📤 Upload public key to Firebase
+            val publicKeyBase64 = CryptoUtil.getPublicKeyBase64(userId)
+            Firebase.database.reference.child("users").child(userId).child("publicKey").setValue(publicKeyBase64)
+
+            // Continue to profile setup
+            val intent = Intent(context, ProfileSetUp::class.java)
+            context.startActivity(intent)
+
+            Toast.makeText(context, "Successfully signed up", Toast.LENGTH_SHORT).show()
+            onSuccess()
+        }
+        else {
                 Toast.makeText(context, "Authentication failed.", Toast.LENGTH_SHORT).show()
             }
         }

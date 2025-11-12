@@ -25,8 +25,6 @@ class ChatRepository(
 //    private val cryptoUtil: CryptoUtil
 ) {
 
-
-    // fetch username (remote)
     suspend fun fetchUsername(userId: String): String? = firebase.fetchUsername(userId)
 
     suspend fun fetchUserProfile(context: Context, userId: String): Pair<String?, String?> =
@@ -89,18 +87,18 @@ class ChatRepository(
     fun setTypingStatus(chatId: String, currentUserId: String, isTyping: Boolean) =
         firebase.setTypingStatus(chatId, currentUserId, isTyping)
 
-    suspend fun decryptMessages(chatId: String, messages: List<Message>): List<Message> =
-        withContext(Dispatchers.Default) {
-            val keyAlias = "chat_$chatId"
-            messages.map { msg ->
-                try {
-                    val decrypted = CryptoUtil.decrypt(keyAlias, msg.text, msg.iv)
-                    msg.copy(decryptedText = decrypted)
-                } catch (e: Exception) {
-                    msg.copy(decryptedText = "[error]")
-                }
-            }
-        }
+//    suspend fun decryptMessages(chatId: String, messages: List<Message>): List<Message> =
+//        withContext(Dispatchers.Default) {
+//            val keyAlias = "chat_$chatId"
+//            messages.map { msg ->
+//                try {
+//                    val decrypted = CryptoUtil.decrypt(keyAlias, msg.text, msg.iv)
+//                    msg.copy(decryptedText = decrypted)
+//                } catch (e: Exception) {
+//                    msg.copy(decryptedText = "[error]")
+//                }
+//            }
+//        }
 
     suspend fun removeFriend(currentUserId: String, friendId: String) {
         firebase.removeFriendFromFirebase(currentUserId, friendId)
@@ -140,5 +138,4 @@ class ChatRepository(
             null
         }
     }
-
 }

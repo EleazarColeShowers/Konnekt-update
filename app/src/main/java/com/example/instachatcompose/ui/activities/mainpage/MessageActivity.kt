@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -130,7 +131,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.DpOffset
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import coil.compose.rememberAsyncImagePainter
@@ -154,6 +154,7 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.security.KeyStore
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.math.absoluteValue
@@ -198,16 +199,16 @@ fun MessagePage() {
             )
         )
     )
-    val requestPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        Log.d("PermissionRequest", "Permission granted: $isGranted")
-        if (isGranted) {
-            showNotification(context)
-        } else {
-            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
-        }
-    }
+//    val requestPermissionLauncher = rememberLauncherForActivityResult(
+//        contract = ActivityResultContracts.RequestPermission()
+//    ) { isGranted: Boolean ->
+//        Log.d("PermissionRequest", "Permission granted: $isGranted")
+//        if (isGranted) {
+//            showNotification(context)
+//        } else {
+//            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
+//        }
+//    }
 
 
 
@@ -310,19 +311,19 @@ fun createNotificationChannel(context: Context) {
     }
 }
 
-fun showNotification(context: Context) {
-    Log.d("Notification", "showNotification() called")
-
-    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    val builder = NotificationCompat.Builder(context, "default_channel")
-        .setSmallIcon(android.R.drawable.ic_dialog_info)
-        .setContentTitle("Notification Title")
-        .setContentText("This is a Jetpack Compose notification.")
-        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-
-    notificationManager.notify(1, builder.build())
-    Log.d("Notification", "Notification sent")
-}
+//fun showNotification(context: Context) {
+//    Log.d("Notification", "showNotification() called")
+//
+//    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+//    val builder = NotificationCompat.Builder(context, "default_channel")
+//        .setSmallIcon(android.R.drawable.ic_dialog_info)
+//        .setContentTitle("Notification Title")
+//        .setContentText("This is a Jetpack Compose notification.")
+//        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+//
+//    notificationManager.notify(1, builder.build())
+//    Log.d("Notification", "Notification sent")
+//}
 
 @Composable
 fun ArchiveScreen() {
@@ -1035,14 +1036,14 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
                 if (messages.isNotEmpty()) {
                     val lastMsg = messages.last()
 
-                    // 🔽 Call suspend function from ViewModel (NOT repo)
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val decryptedMessages = viewModel.decryptMessages(chatId, listOf(lastMsg))
-                        withContext(Dispatchers.Main) {
-                            lastMessage = decryptedMessages.firstOrNull()?.decryptedText
-                                ?: "Encrypted message"
-                        }
-                    }
+//                    // 🔽 Call suspend function from ViewModel (NOT repo)
+//                    CoroutineScope(Dispatchers.IO).launch {
+//                        val decryptedMessages = viewModel.decryptMessages(chatId, listOf(lastMsg))
+//                        withContext(Dispatchers.Main) {
+//                            lastMessage = decryptedMessages.firstOrNull()?.decryptedText
+//                                ?: "Encrypted message"
+//                        }
+//                    }
                 } else {
                     lastMessage = "Send Hi to your new friend!"
                 }
@@ -1144,20 +1145,10 @@ fun GroupAsFriendRow(
                 if (messages.isNotEmpty()) {
                     val latestMessage = messages.last()
 
-                    // Decrypt last message text
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val decrypted = viewModel.decryptMessages(
-                            "group_${group.groupId}",
-                            listOf(latestMessage)
-                        )
-
-                        withContext(Dispatchers.Main) {
-                            val decryptedText = decrypted.firstOrNull()?.decryptedText
-                                ?: "Encrypted message"
-                            val senderName = latestMessage.senderName ?: "Unknown"
-                            lastMessage = "$senderName: $decryptedText"
-                        }
-                    }
+                    // 🔹 No decryption — use text directly
+                    val senderName = latestMessage.senderName
+                    val text = latestMessage.text
+                    lastMessage = "$senderName: $text"
 
                     hasUnreadMessages = messages.any {
                         it.receiverId == currentUserId && !it.seen
@@ -1254,8 +1245,9 @@ sealed class ChatItem {
 
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
-   lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-    // State and context
+    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+
+    // --- State and context ---
     var currentUsername by remember { mutableStateOf("") }
     var messageText by remember { mutableStateOf("") }
     var showMentionDropdown by remember { mutableStateOf(false) }
@@ -1263,32 +1255,25 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var cursorPosition by remember { mutableIntStateOf(0) }
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
-    fun setReplyingTo(message: Message) {
-        val decrypted = message.decryptedText ?: CryptoUtil.decrypt(
-            message.iv, message.text,
-            encodedIv = TODO()
-        )
-        replyingTo = message.copy(decryptedText = decrypted)
-    }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
     var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
-
 
     val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
 
-    // Get chat information
+    // --- Chat info ---
     val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
-    val username = if (isGroupChat) {
+    val username = if (isGroupChat)
         savedStateHandle?.get<String>("groupName") ?: "Group Chat"
-    } else {
+    else
         savedStateHandle?.get<String>("username") ?: "Unknown"
-    }
+
     val profileImageUri = if (isGroupChat) {
         savedStateHandle?.get<String>("groupImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
     } else {
         savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
     }
+
     val chatId = savedStateHandle?.get<String>("chatId") ?: ""
     val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
     val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
@@ -1298,20 +1283,62 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val messagesRef = db.child("chats").child(firebaseChatId).child("messages")
     val typingRef = db.child("chats").child(chatId).child("typing")
 
+    // --- Encryption key setup ---
+    val keyAlias = "chat_$chatId"
+
+    /*
+    LaunchedEffect(chatId) {
+        val ks = KeyStore.getInstance("AndroidKeyStore")
+        ks.load(null)
+        if (ks.containsAlias("chat_$chatId")) {
+            try {
+                val entry = ks.getEntry("chat_$chatId", null) as KeyStore.SecretKeyEntry
+                CryptoUtil.encrypt("chat_$chatId", "test")
+            } catch (e: Exception) {
+                Log.w("ChatScreen", "Old key invalidated, deleting and regenerating.")
+                ks.deleteEntry("chat_$chatId")
+                CryptoUtil.generateAesKeyIfNeeded("chat_$chatId")
+            }
+        } else {
+            CryptoUtil.generateAesKeyIfNeeded("chat_$chatId")
+        }
+    }
+
+    var aesKey by remember { mutableStateOf<ByteArray?>(null) }
+
+    LaunchedEffect(chatId) {
+        viewModel.fetchAndStoreChatAesKey(
+            chatId,
+            currentUserId
+        ) { key ->
+            aesKey = key
+            if (key == null) {
+                Log.e("Chat", "AES key not available for chatId: $chatId")
+            } else {
+                Log.d("Chat", "AES key fetched successfully")
+            }
+        }
+    }
+    */
+
+    // --- ViewModel observers ---
     val messages by viewModel.messages
         .map { it.sortedByDescending { msg -> msg.timestamp } }
         .collectAsState(initial = emptyList())
+
     val isFriendTyping by viewModel.isFriendTyping.collectAsState()
     val filteredMembers = groupMembers.filter {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
 
-
+    // --- Load current username ---
     LaunchedEffect(currentUserId) {
         viewModel.fetchCurrentUserName(currentUserId) { name ->
             currentUsername = name ?: "Unknown"
         }
     }
+
+    // --- Load and observe messages ---
     LaunchedEffect(chatId, isChatOpen) {
         if (!isChatOpen) return@LaunchedEffect
         messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
@@ -1330,18 +1357,25 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 Log.e("ChatScreen", "Failed to load messages: ${error.message}")
             }
         })
-
     }
+
     DisposableEffect(Unit) {
         isChatOpen = true
         onDispose { isChatOpen = false }
     }
+
     LaunchedEffect(chatId) {
-        viewModel.observeMessages( context, chatId, currentUserId,
+        val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
+
+        viewModel.observeMessages(
+            context = context,
+            chatId = firebaseChatId,  // Use normalized ID
+            currentUserId = currentUserId,
             isChatOpen = true,
             requestNotificationPermission = {
-            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        })
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        )
         if (isGroupChat) {
             val groupChatList = fetchGroupChats(currentUserId)
             val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
@@ -1350,11 +1384,26 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             viewModel.observeTyping(chatId, receiverUserId)
         }
     }
+
+    // --- Reply handler ---
+    fun setReplyingTo(message: Message) {
+        val decrypted = try {
+            // message.decryptedText ?: CryptoUtil.decrypt(keyAlias, message.text, message.iv)
+            message.text
+        } catch (e: Exception) {
+            Log.e("ChatScreen", "Failed to decrypt message", e)
+            "[error]"
+        }
+        replyingTo = message.copy(decryptedText = decrypted)
+    }
+
+    // --- UI ---
     Column(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
+        // HEADER
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1369,7 +1418,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                     context.startActivity(intent)
                 },
-                    verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically
         ) {
             if (profileImageUri != Uri.EMPTY) {
                 AsyncImage(
@@ -1408,6 +1457,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 }
             }
         }
+
+        // MESSAGES
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1423,18 +1474,21 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         message = message,
                         currentUserId = currentUserId,
                         onReply = { setReplyingTo(it) },
-                        isGroupChat = true,
-                        onEdit ={ messageToEdit ->
+                        isGroupChat = isGroupChat,
+                        onEdit = { messageToEdit ->
                             messageText = messageToEdit.text
                             editingMessageId = messageToEdit.id
                         },
                         onDeleteForSelf = { msg ->
-                            val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
-                            specificMessageRef.child("deletedFor").child(currentUserId).setValue(true)
+                            val specificMessageRef =
+                                db.child("chats").child(chatId).child("messages").child(msg.id)
+                            specificMessageRef.child("deletedFor").child(currentUserId)
+                                .setValue(true)
                         },
                         onDeleteForEveryone = { msg ->
                             if (msg.id.isNotBlank()) {
-                                val specificMessageRef = db.child("chats").child(chatId).child("messages").child(msg.id)
+                                val specificMessageRef =
+                                    db.child("chats").child(chatId).child("messages").child(msg.id)
                                 specificMessageRef.removeValue()
                                     .addOnSuccessListener {
                                         Log.d("ChatScreen", "Message deleted for everyone")
@@ -1447,12 +1501,12 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             }
                         },
                         messages = messages
-
                     )
                 }
             }
-
         }
+
+        // INPUT BAR
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1460,9 +1514,13 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                 .padding(8.dp)
                 .imePadding()
         ) {
+            // REPLY PREVIEW
             replyingTo?.let { message ->
-                val senderName = if (message.senderId == currentUserId) "You" else if(isGroupChat) message.senderName
-                    else username
+                val senderName = when {
+                    message.senderId == currentUserId -> "You"
+                    isGroupChat -> message.senderName
+                    else -> username
+                }
                 val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
 
                 Row(
@@ -1480,7 +1538,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             fontSize = 14.sp
                         )
                         Text(
-                            text = message.decryptedText ?: "[encrypted]",
+                            text = message.text,
                             color = MaterialTheme.colorScheme.onBackground,
                             fontSize = 14.sp
                         )
@@ -1490,37 +1548,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
             }
-            editingMessageId?.let { messageId ->
-                val replyBackgroundColor = if (isSystemInDarkTheme()) Color.DarkGray else Color.LightGray
 
-                val editingMessage = messages.find { it.id == messageId }
-                editingMessage?.let { message ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(replyBackgroundColor, RoundedCornerShape(8.dp))
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Editing Message",
-                                color = Color(0xFF2F9ECE),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = message.text,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                fontSize = 14.sp
-                            )
-                        }
-                        IconButton(onClick = { editingMessageId = null }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Cancel Edit")
-                        }
-                    }
-                }
-            }
+            // MESSAGE INPUT
             val backgroundColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFF0F0F0)
             Row(
                 modifier = Modifier
@@ -1557,6 +1586,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     shape = RoundedCornerShape(24.dp),
                     singleLine = true
                 )
+
+                // Mentions dropdown
                 DropdownMenu(
                     expanded = showMentionDropdown && mentionQuery.isNotBlank(),
                     onDismissRequest = { showMentionDropdown = false }
@@ -1565,7 +1596,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         DropdownMenuItem(
                             text = { Text(member) },
                             onClick = {
-                                // Replace "@mentionQuery" with "@member"
                                 val beforeCursor = messageText.take(cursorPosition)
                                 val afterCursor = messageText.drop(cursorPosition)
                                 val updatedBefore = beforeCursor.replace(Regex("@\\w+$"), "@$member ")
@@ -1577,17 +1607,17 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     }
                 }
 
+                // SEND BUTTON
                 IconButton(onClick = {
                     if (messageText.isNotBlank()) {
-                        val keyAlias = "chat_${chatId}"
-                        CryptoUtil.generateAesKeyIfNeeded(keyAlias) // make sure key exists
-                        val (encryptedText, iv) = CryptoUtil.encrypt(keyAlias, messageText)
+                        // CryptoUtil.generateAesKeyIfNeeded(keyAlias)
+                        // val (encryptedText, iv) = CryptoUtil.encrypt(keyAlias, messageText)
+                        val encryptedText = messageText
+                        val iv = null
 
                         if (editingMessageId != null) {
-                            // ✏️ Update existing message
                             val messageUpdates = mapOf(
                                 "text" to encryptedText,
-                                "iv" to iv,
                                 "edited" to true
                             )
                             messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
@@ -1595,33 +1625,36 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                     editingMessageId = null
                                     messageText = ""
                                 }
-                        } else {
-                            // ✉️ New message
-                            val messageKey = messagesRef.push().key
-                            if (messageKey != null) {
-                                val newMessage = Message(
-                                    id = messageKey,
-                                    senderId = currentUserId,
-                                    senderName = currentUsername,
-                                    receiverId = receiverUserId,
-                                    text = encryptedText,
-                                    iv = iv,   // 🔥 store it!
-                                    timestamp = System.currentTimeMillis() + (0..999).random(),
-                                    seen = false,
-                                    replyTo = replyingTo?.id,
-                                    edited = false
-                                )
+                                .addOnFailureListener { e ->
+                                    Log.e("Chat", "Failed to edit message: ${e.message}")
+                                }
+                            return@IconButton
+                        }
 
-                                messagesRef.child(messageKey).setValue(newMessage)
-                                messageText = ""
-                                replyingTo = null
-                            }
+                        val messageKey = messagesRef.push().key
+                        if (messageKey != null) {
+                            val newMessage = Message(
+                                id = messageKey,
+                                senderId = currentUserId,
+                                senderName = currentUsername,
+                                receiverId = receiverUserId,
+                                text = encryptedText,
+//                                iv = iv,
+//                                rsaEncryptedKey = null,
+//                                rsaIv = null,
+                                timestamp = System.currentTimeMillis() + (0..999).random(),
+                                seen = false,
+                                replyTo = replyingTo?.id,
+                                edited = false
+                            )
+                            messagesRef.child(messageKey).setValue(newMessage)
+                            messageText = ""
+                            replyingTo = null
                         }
                     }
                 }) {
                     Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
-
             }
         }
     }
@@ -1666,7 +1699,7 @@ fun MessageBubble(
     var menuPositionDp by remember {
         mutableStateOf(DpOffset(0.dp, 0.dp))
     }
-    
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
@@ -1694,7 +1727,6 @@ fun MessageBubble(
                 }
                 .onGloballyPositioned { coordinates ->
                     menuPositionPx = coordinates.boundsInWindow().bottomLeft
-
                     menuPositionDp = with(density) {
                         DpOffset(menuPositionPx.x.toDp(), menuPositionPx.y.toDp())
                     }
@@ -1709,7 +1741,7 @@ fun MessageBubble(
             Column {
                 if (isGroupChat && !isSentByUser) {
                     Text(
-                        text = message.senderName ,
+                        text = message.senderName,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = senderColor,
@@ -1718,13 +1750,7 @@ fun MessageBubble(
                 }
                 message.replyTo?.let { replyId ->
                     val repliedMessage = messages.find { it.id == replyId }
-                    val repliedText = repliedMessage?.decryptedText
-                        ?: repliedMessage?.let { CryptoUtil.decrypt(
-                            it.iv, it.text,
-                            encodedIv = TODO()
-                        ) }
-                        ?: "[message unavailable]"
-
+                    val repliedText = repliedMessage?.text ?: "[message unavailable]"
                     Text(
                         text = "Replying to: $repliedText",
                         color = MaterialTheme.colorScheme.onBackground,
@@ -1734,11 +1760,16 @@ fun MessageBubble(
                 }
                 val annotated = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
-                    val rawText = message.decryptedText ?: "[encrypted]"
+                    val rawText = message.text
                     var currentIndex = 0
                     regex.findAll(rawText).forEach { match ->
                         append(rawText.substring(currentIndex, match.range.first))
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold)) {
+                        withStyle(
+                            SpanStyle(
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontWeight = FontWeight.Bold
+                            )
+                        ) {
                             append(match.value)
                         }
                         currentIndex = match.range.last + 1
@@ -1811,25 +1842,6 @@ fun generateColorFromId(id: String): Color {
     return colors[index]
 }
 
-suspend fun fetchLastMessageTimestamp(chatId: String): Long {
-    return try {
-        val database = Firebase.database.reference
-        val snapshot = database
-            .child("chats")
-            .child(chatId)
-            .child("messages")
-            .orderByChild("timestamp")
-            .limitToLast(1)
-            .get()
-            .await()
-
-        val message = snapshot.children.firstOrNull()
-        message?.child("timestamp")?.getValue(Long::class.java) ?: 0L
-    } catch (e: Exception) {
-        Log.e("fetchLastMessageTimestamp", "Error fetching timestamp", e)
-        0L
-    }
-}
 
 enum class BottomAppBarItem {
     Messages,
@@ -1916,31 +1928,3 @@ fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveI
         )
     }
 }
-
-@Composable
-fun CallScreen() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.coming_soon),
-            contentDescription = "Coming Soon",
-            modifier = Modifier
-                .size(200.dp)
-                .padding(bottom = 24.dp),
-            contentScale = ContentScale.Fit
-        )
-
-        Text(
-            text = "Archive feature is coming soon!",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF2F9ECE)
-        )
-    }
-}
-

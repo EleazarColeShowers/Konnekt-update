@@ -2,6 +2,7 @@
 
 package com.example.instachatcompose.ui.activities.konnekt
 
+import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -68,6 +69,11 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.instachatcompose.R
 import com.example.instachatcompose.ui.activities.Settings
 import com.example.instachatcompose.ui.activities.data.ChatViewModel
+import com.example.instachatcompose.ui.activities.data.ChatViewModelFactory
+import com.example.instachatcompose.ui.activities.data.local.AppDatabase
+import com.example.instachatcompose.ui.activities.data.local.LocalDataSource
+import com.example.instachatcompose.ui.activities.data.remote.FirebaseDataSource
+import com.example.instachatcompose.ui.activities.data.repository.ChatRepository
 import com.example.instachatcompose.ui.activities.mainpage.MessageActivity
 import com.example.instachatcompose.ui.activities.mainpage.ProfileActivity
 import com.example.instachatcompose.ui.theme.InstaChatComposeTheme
@@ -167,8 +173,17 @@ fun UserAddFriends() {
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
-    val viewModel: ChatViewModel = viewModel()
+    val app = context.applicationContext as Application
 
+    val viewModel: ChatViewModel = viewModel(
+        factory = ChatViewModelFactory(
+            app,
+            ChatRepository(
+                FirebaseDataSource(),
+                LocalDataSource(AppDatabase.getDatabase(app))
+            )
+        )
+    )
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
