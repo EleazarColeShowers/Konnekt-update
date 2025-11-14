@@ -1035,15 +1035,7 @@ fun FriendRow(friend: Friend, details: Map<String, String>, navController: NavCo
 
                 if (messages.isNotEmpty()) {
                     val lastMsg = messages.last()
-
-//                    // 🔽 Call suspend function from ViewModel (NOT repo)
-//                    CoroutineScope(Dispatchers.IO).launch {
-//                        val decryptedMessages = viewModel.decryptMessages(chatId, listOf(lastMsg))
-//                        withContext(Dispatchers.Main) {
-//                            lastMessage = decryptedMessages.firstOrNull()?.decryptedText
-//                                ?: "Encrypted message"
-//                        }
-//                    }
+                    lastMessage = lastMsg.text
                 } else {
                     lastMessage = "Send Hi to your new friend!"
                 }
