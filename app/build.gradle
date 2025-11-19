@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace 'com.example.instachatcompose'
+    namespace 'com.el.konnekt'
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.example.instachatcompose"
+        applicationId "com.el.konnekt"
         minSdk 24
         targetSdk 34
         versionCode 1

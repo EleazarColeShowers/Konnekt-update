@@ -22,8 +22,8 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.example.instachatcompose" />
-                  <option name="mobileSdkAppId" value="1:201340415514:android:42a31289da10387d0d6ba3" />
+                  <option name="appId" value="com.el.konnekt" />
+                  <option name="mobileSdkAppId" value="1:201340415514:android:d631a7e8275054080d6ba3" />
                   <option name="projectId" value="instachat-10143" />
                   <option name="projectNumber" value="201340415514" />
                 </ConnectionSetting>

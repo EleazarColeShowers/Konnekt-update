@@ -15,7 +15,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "201340415514-pk826qqsdhg12clhhsdi6qoi5htas42j.apps.googleusercontent.com",
+          "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -28,7 +28,36 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "201340415514-pk826qqsdhg12clhhsdi6qoi5htas42j.apps.googleusercontent.com",
+              "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:201340415514:android:d631a7e8275054080d6ba3",
+        "android_client_info": {
+          "package_name": "com.el.konnekt"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5JQFpgbYZC0I2nrt4pFMM9XzhrtvwVwM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
@@ -44,7 +73,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "201340415514-pk826qqsdhg12clhhsdi6qoi5htas42j.apps.googleusercontent.com",
+          "client_id": "201340415514-fjmjjjrlrahp3lm13ji09nk144t9fac2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.instachatcompose",
+            "certificate_hash": "ed23b079f52ebea7fa877211667cfcef61ea3651"
+          }
+        },
+        {
+          "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -57,7 +94,7 @@
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "201340415514-pk826qqsdhg12clhhsdi6qoi5htas42j.apps.googleusercontent.com",
+              "client_id": "201340415514-3s5r9oh9l1eio1q38ff7r16pnla4r2ts.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
