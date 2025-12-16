@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.remote
+package com.el.konnekt.data.remote
 
 import android.app.NotificationManager
 import android.util.Log

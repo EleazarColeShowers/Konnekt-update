@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.core
+package com.el.konnekt.data.core
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

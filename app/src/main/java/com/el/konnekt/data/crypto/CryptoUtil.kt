@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.crypto
+package com.el.konnekt.data.crypto
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties

@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data
+package com.el.konnekt.data
 
 import android.app.Application
 import android.content.Context
@@ -10,11 +10,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.el.konnekt.ui.activities.data.core.NotificationHelper
-import com.el.konnekt.ui.activities.data.local.FriendEntity
-import com.el.konnekt.ui.activities.data.local.GroupEntity
-import com.el.konnekt.ui.activities.data.local.UserEntity
-import com.el.konnekt.ui.activities.data.repository.ChatRepository
+import com.el.konnekt.data.core.NotificationHelper
+import com.el.konnekt.data.local.FriendEntity
+import com.el.konnekt.data.local.GroupEntity
+import com.el.konnekt.data.local.UserEntity
+import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.ui.activities.mainpage.ChatItem
 import com.el.konnekt.ui.activities.mainpage.Friend
 import com.el.konnekt.ui.activities.mainpage.GroupChat
@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlin.collections.map
 
 
 class ChatViewModel(

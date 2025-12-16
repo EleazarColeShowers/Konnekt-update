@@ -1,19 +1,9 @@
-package com.el.konnekt.ui.activities.data.models
+package com.el.konnekt.data.models
 
 import com.el.konnekt.ui.activities.mainpage.Friend
 import com.el.konnekt.ui.activities.mainpage.GroupChat
 
-//data class Friend(
-//    val friendId: String = "",
-//    val timestamp: Long = 0L
-//)
-//
-//data class GroupChat(
-//    val groupId: String,
-//    val groupName: String,
-//    val members: List<String>,
-//    val groupImage: String = ""
-//)
+
 
 sealed class ChatItem {
     data class FriendItem(

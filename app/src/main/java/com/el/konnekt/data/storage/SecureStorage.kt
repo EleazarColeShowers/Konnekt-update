@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.storage
+package com.el.konnekt.data.storage
 
 import android.content.Context
 import android.content.SharedPreferences

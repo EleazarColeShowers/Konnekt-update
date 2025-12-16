@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.local
+package com.el.konnekt.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
@@ -19,7 +19,7 @@ interface UserDao {
 interface FriendDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-     fun insertFriend(friend: FriendEntity)
+    suspend fun insertFriend(friend: FriendEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFriends(friends: List<FriendEntity>)
@@ -28,7 +28,10 @@ interface FriendDao {
     suspend fun getFriendsForUser(userId: String): List<FriendEntity>
 
     @Query("SELECT * FROM friends WHERE userId = :userId AND friendId = :friendId LIMIT 1")
-    suspend fun getFriendByUserAndFriendId(userId: String, friendId: String): FriendEntity?
+    suspend fun getFriendByUserAndFriendId(
+        userId: String,
+        friendId: String
+    ): FriendEntity?
 
     @Query("SELECT * FROM friends WHERE userId = :currentUserId")
     fun observeFriendsForUser(currentUserId: String): Flow<List<FriendEntity>>

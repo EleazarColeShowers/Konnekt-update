@@ -65,7 +65,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.el.konnekt.R
-import com.el.konnekt.ui.activities.data.crypto.CryptoUtil
+import com.el.konnekt.data.crypto.CryptoUtil
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DatabaseReference

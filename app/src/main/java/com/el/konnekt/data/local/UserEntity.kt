@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.local
+package com.el.konnekt.data.local
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -14,18 +14,10 @@ data class UserEntity(
     val profileImageUri: String
 )
 
-@Entity(
-    tableName = "friends",
-    foreignKeys = [ForeignKey(
-        entity = UserEntity::class,
-        parentColumns = ["userId"],
-        childColumns = ["userId"],
-        onDelete = CASCADE
-    )]
-)
+@Entity(tableName = "friends")
 data class FriendEntity(
     @PrimaryKey val friendId: String,
-    val userId: String,
+    val userId: String,          // owner (current user)
     val username: String,
     val profileImageUri: String,
     val timestamp: Long

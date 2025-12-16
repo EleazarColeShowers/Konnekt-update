@@ -11,28 +11,18 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
-import com.el.konnekt.R
-import com.el.konnekt.ui.activities.data.local.AppDatabase
-import com.el.konnekt.ui.activities.data.core.ChatManager
-import com.el.konnekt.ui.activities.data.repository.ChatRepository
-import com.el.konnekt.ui.activities.data.ChatViewModel
-import com.el.konnekt.ui.activities.data.ChatViewModelFactory
-import com.el.konnekt.ui.activities.data.remote.FirebaseDataSource
-import com.el.konnekt.ui.activities.data.local.LocalDataSource
+import com.el.konnekt.data.local.AppDatabase
+import com.el.konnekt.data.core.ChatManager
+import com.el.konnekt.data.repository.ChatRepository
+import com.el.konnekt.data.ChatViewModel
+import com.el.konnekt.data.ChatViewModelFactory
+import com.el.konnekt.data.remote.FirebaseDataSource
+import com.el.konnekt.data.local.LocalDataSource
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
 import com.google.firebase.auth.FirebaseAuth
@@ -42,7 +32,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 
 class MainActivity : ComponentActivity() {
-    private val splashScreenDuration = 5000L // 10 seconds in milliseconds
+    private val splashScreenDuration = 100L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,7 +47,7 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ){
-                        AnimatedPreloader()
+                        // Splash screen content removed
                     }
                 }
             }
@@ -73,19 +63,12 @@ class MainActivity : ComponentActivity() {
                         override fun onDataChange(snapshot: DataSnapshot) {
                             val chatId = snapshot.getValue(String::class.java)
                             if (!chatId.isNullOrEmpty()) {
-                                // You’ll need a ViewModel instance here
                                 val appDb = AppDatabase.getDatabase(applicationContext)
                                 val localDataSource = LocalDataSource(appDb)
                                 val firebaseDataSource = FirebaseDataSource()
-
-// Build the repository with the correct constructor
                                 val repo = ChatRepository(firebaseDataSource, localDataSource)
-
-// Now provide it to the ViewModel
                                 val factory = ChatViewModelFactory(application, repo)
                                 val chatViewModel = ViewModelProvider(this@MainActivity, factory)[ChatViewModel::class.java]
-
-
                                 ChatManager.startListeningForMessages(
                                     applicationContext,
                                     chatId,
@@ -93,7 +76,6 @@ class MainActivity : ComponentActivity() {
                                     chatViewModel
                                 )
                             }
-                            // Go to the home or login screen
                             startActivity(Intent(this@MainActivity, MessageActivity::class.java))
                             finish()
                         }
@@ -110,30 +92,5 @@ class MainActivity : ComponentActivity() {
                 finish()
             }
         }, splashScreenDuration)
-    }
-}
-
-@Composable
-fun AnimatedPreloader(modifier: Modifier = Modifier) {
-    val preloaderLottieComposition by rememberLottieComposition(
-        LottieCompositionSpec.RawRes(
-            R.raw.connections
-        )
-    )
-
-    val preloaderProgress by animateLottieCompositionAsState(
-        composition = preloaderLottieComposition,
-        iterations = LottieConstants.IterateForever,
-        isPlaying = true
-    )
-
-    Column(
-        modifier= Modifier.padding(horizontal = 20.dp)
-    ) {
-        LottieAnimation(
-            composition = preloaderLottieComposition,
-            progress = preloaderProgress,
-            modifier = modifier
-        )
     }
 }

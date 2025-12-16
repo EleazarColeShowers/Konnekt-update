@@ -2,7 +2,7 @@ package com.el.konnekt.ui.activities
 
 import android.app.Application
 import androidx.room.Room
-import com.el.konnekt.ui.activities.data.local.AppDatabase
+import com.el.konnekt.data.local.AppDatabase
 
 
 class KonnektApp : Application() {

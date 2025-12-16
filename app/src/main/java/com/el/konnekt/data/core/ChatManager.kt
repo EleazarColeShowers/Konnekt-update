@@ -1,9 +1,9 @@
-package com.el.konnekt.ui.activities.data.core
+package com.el.konnekt.data.core
 
 import android.Manifest
 import android.content.Context
 import androidx.activity.result.ActivityResultLauncher
-import com.el.konnekt.ui.activities.data.ChatViewModel
+import com.el.konnekt.data.ChatViewModel
 
 object ChatManager {
     private var hasStartedListening = false

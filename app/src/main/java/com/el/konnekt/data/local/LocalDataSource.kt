@@ -1,4 +1,4 @@
-package com.el.konnekt.ui.activities.data.local
+package com.el.konnekt.data.local
 
 import kotlinx.coroutines.flow.Flow
 

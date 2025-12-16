@@ -1,13 +1,13 @@
-package com.el.konnekt.ui.activities.data.repository
+package com.el.konnekt.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.el.konnekt.ui.activities.data.Message
-import com.el.konnekt.ui.activities.data.local.FriendEntity
-import com.el.konnekt.ui.activities.data.local.GroupEntity
-import com.el.konnekt.ui.activities.data.local.LocalDataSource
-import com.el.konnekt.ui.activities.data.local.UserEntity
-import com.el.konnekt.ui.activities.data.remote.FirebaseDataSource
+import com.el.konnekt.data.remote.FirebaseDataSource
+import com.el.konnekt.data.Message
+import com.el.konnekt.data.local.FriendEntity
+import com.el.konnekt.data.local.GroupEntity
+import com.el.konnekt.data.local.LocalDataSource
+import com.el.konnekt.data.local.UserEntity
 import com.el.konnekt.ui.activities.mainpage.Friend
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -15,6 +15,7 @@ import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.tasks.await
 import kotlin.collections.get
+import kotlin.jvm.java
 
 class ChatRepository(
     private val firebase: FirebaseDataSource,

@@ -56,10 +56,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.el.konnekt.R
-import com.el.konnekt.ui.activities.data.crypto.CryptoUtil
-import com.el.konnekt.ui.activities.data.local.AppDatabase
-import com.el.konnekt.ui.activities.data.storage.SecureStorage
-import com.el.konnekt.ui.activities.data.local.UserEntity
+import com.el.konnekt.data.crypto.CryptoUtil
+import com.el.konnekt.data.local.AppDatabase
+import com.el.konnekt.data.storage.SecureStorage
+import com.el.konnekt.data.local.UserEntity
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
 import com.el.konnekt.ui.activities.signup.CustomCheckbox
 import com.el.konnekt.ui.activities.signup.SignUpActivity
