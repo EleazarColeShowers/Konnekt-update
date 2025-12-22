@@ -254,6 +254,70 @@ fun MessagePage() {
         viewModel.loadGroupChats(userId)
     }
 
+    LaunchedEffect(userId) {
+        viewModel.loadGroupChats(userId)
+    }
+
+    DisposableEffect(userId) {
+        // Real-time sync for groups from Firebase
+        val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val userGroups = mutableListOf<GroupChat>()
+
+                for (groupSnapshot in snapshot.children) {
+                    val groupId = groupSnapshot.key ?: continue
+                    if (!groupId.startsWith("group_")) continue
+
+                    val membersSnapshot = groupSnapshot.child("members")
+                    val memberIds = membersSnapshot.children.mapNotNull { it.key }
+
+                    // Only include groups where current user is a member
+                    if (userId in memberIds) {
+                        val groupName = groupSnapshot.child("groupName")
+                            .getValue(String::class.java) ?: "Unnamed Group"
+                        val groupImage = groupSnapshot.child("groupImage")
+                            .getValue(String::class.java) ?: ""
+
+                        userGroups.add(
+                            GroupChat(
+                                groupId = groupId.removePrefix("group_"),
+                                groupName = groupName,
+                                members = memberIds,
+                                groupImage = groupImage
+                            )
+                        )
+                    }
+                }
+
+                // Update ViewModel with synced groups
+                viewModel.updateGroupChats(userGroups)
+
+                // Refresh combined list
+                viewModel.refreshCombinedChatList(
+                    userId,
+                    friendList,
+                    searchQuery,
+                    context,
+                    userGroups
+                )
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("MessagePage", "Failed to sync groups: ${error.message}")
+            }
+        }
+
+        groupsRef.addValueEventListener(listener)
+
+        // Cleanup listener when composable is disposed
+        onDispose {
+            groupsRef.removeEventListener(listener)
+        }
+    }
+
+
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
     }
@@ -317,7 +381,7 @@ fun MessagePage() {
         }
     }
     if (showCreateGroupDialog) {
-        CreateGroupBottomSheet(onDismiss = { showCreateGroupDialog = false }, friendList = friendList)
+        CreateGroupBottomSheet(onDismiss = { showCreateGroupDialog = false }, friendList = friendList, currentUserId = userId, viewModel = viewModel)
     }
 }
 
@@ -379,7 +443,12 @@ fun ArchiveScreen() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, onDismiss: () -> Unit) {
+fun CreateGroupBottomSheet(
+    friendList: List<Pair<Friend, Map<String, String>>>,
+    onDismiss: () -> Unit,
+    currentUserId: String,  // ADD THIS
+    viewModel: ChatViewModel
+) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
@@ -627,13 +696,14 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
 
                         if (groupName.isNotBlank() && currentUserId != null) {
                             val groupId = "group_${UUID.randomUUID()}"
-                            TempGroupIdHolder.groupId = groupId
+                            // Remove TempGroupIdHolder - not needed
 
                             val members = selectedFriends.toMutableList().apply {
                                 if (!contains(currentUserId)) add(currentUserId)
                             }
 
                             if (groupImageUri != null) {
+                                // WITH IMAGE - Upload image first
                                 val storageRef = FirebaseStorage.getInstance().reference
                                     .child("group_images/$groupId/profile_image.jpg")
 
@@ -651,32 +721,37 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                                                 .child(groupId)
                                                 .setValue(groupData)
                                                 .addOnSuccessListener {
+                                                    // FIXED: Save to local DB
+                                                    val groupEntity = GroupEntity(
+                                                        groupId = groupId,
+                                                        userId = currentUserId,
+                                                        groupName = groupName,
+                                                        groupImageUri = downloadUrl.toString(),
+                                                        memberIds = members.joinToString(",")
+                                                    )
+                                                    CoroutineScope(Dispatchers.IO).launch {
+                                                        db.groupDao().insertGroup(groupEntity)
+                                                    }
+
+                                                    // Trigger real-time sync
+                                                    viewModel.loadGroupChats(currentUserId)
+
                                                     Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
                                                 }
                                                 .addOnFailureListener {
                                                     Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
                                                 }
-                                            val groupEntity = GroupEntity(
-                                                groupId = groupId,
-                                                userId= currentUserId,
-                                                groupName = groupName,
-                                                groupImageUri = downloadUrl.toString(),
-                                                memberIds = members.joinToString(",")
-                                            )
-
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                db.groupDao().insertGroup(groupEntity)
-                                            }
                                         }
                                     }
                                     .addOnFailureListener {
                                         Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
                                     }
                             } else {
+                                // WITHOUT IMAGE - FIXED VERSION
                                 val groupData = mapOf(
                                     "groupName" to groupName,
                                     "members" to members.associateWith { true },
-                                    "groupImage" to null,
+                                    "groupImage" to "",  // Empty string instead of null
                                     "adminId" to currentUserId
                                 )
 
@@ -684,6 +759,22 @@ fun CreateGroupBottomSheet(friendList: List<Pair<Friend, Map<String, String>>>, 
                                     .child(groupId)
                                     .setValue(groupData)
                                     .addOnSuccessListener {
+                                        // FIXED: NOW SAVES TO LOCAL DB EVEN WITHOUT IMAGE
+                                        val groupEntity = GroupEntity(
+                                            groupId = groupId,
+                                            userId = currentUserId,
+                                            groupName = groupName,
+                                            groupImageUri = "",  // Empty string for no image
+                                            memberIds = members.joinToString(",")
+                                        )
+
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            db.groupDao().insertGroup(groupEntity)
+                                        }
+
+                                        // Trigger real-time sync
+                                        viewModel.loadGroupChats(currentUserId)
+
                                         Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
                                     }
                                     .addOnFailureListener {
@@ -1204,6 +1295,7 @@ fun FriendRow(
     var lastMessage by remember { mutableStateOf("Send Hi to your new friend!") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
     var timestamp by remember { mutableStateOf<Long?>(null) }
+    var unreadCount by remember { mutableIntStateOf(0) }
 
     DisposableEffect(chatId) {
         val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
@@ -1221,7 +1313,10 @@ fun FriendRow(
                     timestamp = null
                 }
 
-                hasUnreadMessages = messages.any { it.receiverId == currentUserId && !it.seen }
+                // FIXED: Count unread messages
+                val unreadMessages = messages.filter { it.receiverId == currentUserId && !it.seen }
+                hasUnreadMessages = unreadMessages.isNotEmpty()
+                unreadCount = unreadMessages.size
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -1340,13 +1435,37 @@ fun FriendRow(
 
                 if (hasUnreadMessages) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2F9ECE))
-                    )
+
+                    // Show count badge if more than 1 message
+                    if (unreadCount > 1) {
+                        Surface(
+                            modifier = Modifier.size(20.dp),
+                            shape = CircleShape,
+                            color = Color(0xFF2F9ECE)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Text(
+                                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    } else {
+                        // Single unread - show dot
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF2F9ECE))
+                        )
+                    }
                 }
+
             }
         }
     }
@@ -1378,6 +1497,8 @@ fun GroupAsFriendRow(
     var lastMessage by remember { mutableStateOf("No messages yet") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
     var timestamp by remember { mutableStateOf<Long?>(null) }
+    var unreadCount by remember { mutableIntStateOf(0) }
+
 
     DisposableEffect(group.groupId) {
         val db = Firebase.database.reference
@@ -1395,12 +1516,18 @@ fun GroupAsFriendRow(
                     lastMessage = "$senderName: $text"
                     timestamp = latestMessage.timestamp
 
-                    hasUnreadMessages = messages.any {
-                        it.receiverId == currentUserId && !it.seen
+                    // FIXED: Count unread messages in group
+                    // For group chats, count messages where sender is NOT current user and not seen
+                    val unreadMessages = messages.filter {
+                        it.senderId != currentUserId && !it.seen
                     }
+                    hasUnreadMessages = unreadMessages.isNotEmpty()
+                    unreadCount = unreadMessages.size
                 } else {
                     lastMessage = "No messages yet"
                     timestamp = null
+                    hasUnreadMessages = false
+                    unreadCount = 0
                 }
             }
 
@@ -1515,12 +1642,35 @@ fun GroupAsFriendRow(
 
                 if (hasUnreadMessages) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2F9ECE))
-                    )
+
+                    // Show count badge if more than 1 message
+                    if (unreadCount > 1) {
+                        Surface(
+                            modifier = Modifier.size(20.dp),
+                            shape = CircleShape,
+                            color = Color(0xFF2F9ECE)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Text(
+                                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    } else {
+                        // Single unread - show dot
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF2F9ECE))
+                        )
+                    }
                 }
             }
         }
@@ -1619,7 +1769,12 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
 
     DisposableEffect(Unit) {
         isChatOpen = true
-        onDispose { isChatOpen = false }
+        onDispose {
+            isChatOpen = false
+            if (!isGroupChat) {
+                typingRef.child(currentUserId).setValue(false)
+            }
+        }
     }
 
     LaunchedEffect(chatId) {
@@ -1639,7 +1794,43 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
             val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
             groupMembers = group?.members ?: emptyList()
         } else {
-            viewModel.observeTyping(chatId, receiverUserId)
+            viewModel.observeTyping(firebaseChatId, receiverUserId)
+        }
+    }
+
+    // Mark messages as seen when chat opens
+    DisposableEffect(chatId, isChatOpen) {
+        if (!isChatOpen) {
+            return@DisposableEffect onDispose { }
+        }
+
+        val seenListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                snapshot.children.forEach { messageSnapshot ->
+                    val message = messageSnapshot.getValue(Message::class.java)
+                    // For group chats, check if sender is not current user
+                    // For 1-on-1 chats, check if receiver is current user
+                    val shouldMarkSeen = if (isGroupChat) {
+                        message != null && message.senderId != currentUserId && !message.seen
+                    } else {
+                        message != null && message.receiverId == currentUserId && !message.seen
+                    }
+
+                    if (shouldMarkSeen) {
+                        messageSnapshot.ref.child("seen").setValue(true)
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatScreen", "Failed to mark messages as seen: ${error.message}")
+            }
+        }
+
+        messagesRef.addValueEventListener(seenListener)
+
+        onDispose {
+            messagesRef.removeEventListener(seenListener)
         }
     }
 
@@ -1705,7 +1896,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Profile image with border
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -1948,8 +2138,9 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                     } else {
                                         showMentionDropdown = false
                                     }
-                                    typingRef.child(currentUserId).setValue(it.isNotEmpty())
-                                },
+                                    if (!isGroupChat) {
+                                        typingRef.child(currentUserId).setValue(it.isNotEmpty())
+                                    } },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = {
                                     Text(

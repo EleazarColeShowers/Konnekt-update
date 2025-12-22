@@ -383,6 +383,10 @@ class ChatViewModel(
             }
         }
     }
+    fun updateGroupChats(groups: List<GroupChat>) {
+        _groupChats.value = groups
+    }
+
 
     override fun onCleared() {
         super.onCleared()

@@ -311,7 +311,7 @@ fun Form(username: String, onUsernameChanged: (String) -> Unit){
                 ) {
                     BasicTextField(
                         value = email,
-                        onValueChange = { email = it },
+                        onValueChange = { email = it.trim() },
                         textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onBackground),
                         singleLine = true,
                         modifier = Modifier.weight(1f) // Takes up available space
