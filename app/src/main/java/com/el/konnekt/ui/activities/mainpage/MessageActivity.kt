@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -1798,41 +1799,39 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         }
     }
 
-    // Mark messages as seen when chat opens
-    DisposableEffect(chatId, isChatOpen) {
-        if (!isChatOpen) {
-            return@DisposableEffect onDispose { }
-        }
+    LaunchedEffect(chatId, isChatOpen) {
+        if (!isChatOpen) return@LaunchedEffect
 
-        val seenListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                snapshot.children.forEach { messageSnapshot ->
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    // For group chats, check if sender is not current user
-                    // For 1-on-1 chats, check if receiver is current user
-                    val shouldMarkSeen = if (isGroupChat) {
-                        message != null && message.senderId != currentUserId && !message.seen
-                    } else {
-                        message != null && message.receiverId == currentUserId && !message.seen
-                    }
+        // Small delay to ensure chat is fully loaded
+        kotlinx.coroutines.delay(300)
 
-                    if (shouldMarkSeen) {
-                        messageSnapshot.ref.child("seen").setValue(true)
-                    }
+        messagesRef.get().addOnSuccessListener { snapshot ->
+            snapshot.children.forEach { messageSnapshot ->
+                val message = messageSnapshot.getValue(Message::class.java)
+
+                // For group chats, mark all messages from others as seen
+                // For 1-on-1 chats, mark messages where current user is receiver
+                val shouldMarkSeen = if (isGroupChat) {
+                    message != null && message.senderId != currentUserId && !message.seen
+                } else {
+                    message != null && message.receiverId == currentUserId && !message.seen
+                }
+
+                if (shouldMarkSeen) {
+                    messageSnapshot.ref.child("seen").setValue(true)
+                        .addOnSuccessListener {
+                            Log.d("ChatScreen", "Message ${message?.id} marked as seen")
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("ChatScreen", "Failed to mark message as seen: ${e.message}")
+                        }
                 }
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to mark messages as seen: ${error.message}")
-            }
-        }
-
-        messagesRef.addValueEventListener(seenListener)
-
-        onDispose {
-            messagesRef.removeEventListener(seenListener)
+        }.addOnFailureListener { e ->
+            Log.e("ChatScreen", "Failed to load messages for marking seen: ${e.message}")
         }
     }
+
 
     // --- Reply handler ---
     fun setReplyingTo(message: Message) {
@@ -2270,16 +2269,13 @@ fun MessageBubble(
     onDeleteForEveryone: (Message) -> Unit,
     isGroupChat: Boolean = false
 ) {
-    val senderColorMap = remember { mutableMapOf<String, Color>() }
+    // FIXED: Direct color generation - consistent per user
     val senderColor = remember(message.senderId) {
-        senderColorMap.getOrPut(message.senderId) {
-            generateColorFromId(message.senderId)
-        }
+        generateColorFromId(message.senderId)
     }
+
     val isSentByUser = message.senderId == currentUserId
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val maxWidth = screenWidth * 0.7f
-    val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFEEEEEE)
+    val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF2C2C2E) else Color(0xFFE8E8E8)
     val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
     var showMenu by remember { mutableStateOf(false) }
     var rawOffsetX by remember { mutableFloatStateOf(0f) }
@@ -2299,13 +2295,14 @@ fun MessageBubble(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 1.dp),
         horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
     ) {
         Surface(
             modifier = Modifier
-                .widthIn(max = maxWidth)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .wrapContentWidth()
                 .offset(x = offsetX.dp)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
@@ -2334,26 +2331,30 @@ fun MessageBubble(
                     onClick = {}
                 ),
             shape = RoundedCornerShape(
-                topStart = if (isSentByUser) 16.dp else 4.dp,
-                topEnd = if (isSentByUser) 4.dp else 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp
+                topStart = if (isSentByUser) 18.dp else 4.dp,
+                topEnd = if (isSentByUser) 4.dp else 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = 18.dp
             ),
             color = backgroundColor,
-            shadowElevation = 1.dp
+            shadowElevation = 0.5.dp
         ) {
             Column(
-                modifier = Modifier.padding(10.dp)
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
+                // Sender name for group chats
                 if (isGroupChat && !isSentByUser) {
                     Text(
                         text = message.senderName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
                         color = senderColor,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
+
+                // Reply preview
                 message.replyTo?.let { replyId ->
                     val repliedMessage = messages.find { it.id == replyId }
                     val repliedText = repliedMessage?.text ?: "[message unavailable]"
@@ -2361,12 +2362,12 @@ fun MessageBubble(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        shape = RoundedCornerShape(6.dp),
+                            .padding(bottom = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = if (isSentByUser)
-                            Color.White.copy(alpha = 0.2f)
+                            Color.White.copy(alpha = 0.15f)
                         else
-                            Color.Black.copy(alpha = 0.1f)
+                            Color.Black.copy(alpha = 0.08f)
                     ) {
                         Row(
                             modifier = Modifier.padding(6.dp),
@@ -2375,14 +2376,15 @@ fun MessageBubble(
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
-                                    .height(28.dp)
+                                    .height(32.dp)
                                     .background(
                                         if (isSentByUser) Color.White.copy(alpha = 0.7f)
-                                        else senderColor
+                                        else senderColor,
+                                        RoundedCornerShape(2.dp)
                                     )
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
                                     text = repliedMessage?.senderName ?: "Unknown",
                                     fontSize = 11.sp,
@@ -2397,7 +2399,7 @@ fun MessageBubble(
                                 Text(
                                     text = repliedText,
                                     fontSize = 12.sp,
-                                    color = textColor.copy(alpha = 0.8f),
+                                    color = textColor.copy(alpha = 0.7f),
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -2406,6 +2408,7 @@ fun MessageBubble(
                     }
                 }
 
+                // Message text with mentions
                 val annotated = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
                     val rawText = message.text
@@ -2415,11 +2418,11 @@ fun MessageBubble(
                         withStyle(
                             SpanStyle(
                                 color = if (isSentByUser) Color.White else senderColor,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 background = if (isSentByUser)
-                                    Color.White.copy(alpha = 0.2f)
+                                    Color.White.copy(alpha = 0.15f)
                                 else
-                                    senderColor.copy(alpha = 0.15f)
+                                    senderColor.copy(alpha = 0.12f)
                             )
                         ) {
                             append(" ${match.value} ")
@@ -2428,48 +2431,55 @@ fun MessageBubble(
                     }
                     append(rawText.substring(currentIndex))
                 }
-
-                Text(
-                    text = annotated,
-                    color = textColor,
-                    fontSize = 15.sp,
-                    lineHeight = 20.sp
-                )
-
-                // Timestamp
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.wrapContentWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
                 ) {
+                    // Message text
                     Text(
-                        text = formatTimestamp(message.timestamp),
-                        fontSize = 10.sp,
-                        color = textColor.copy(alpha = 0.6f)
+                        text = annotated,
+                        color = textColor,
+                        fontSize = 15.sp,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
 
-                    if (isSentByUser) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.DoneAll,
-                            contentDescription = "Read",
-                            modifier = Modifier.size(12.dp),
-                            tint = textColor.copy(alpha = 0.6f)
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Timestamp + read receipt inline
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            text = formatTimestamp(message.timestamp),
+                            fontSize = 9.sp,
+                            color = textColor.copy(alpha = 0.45f)
                         )
+
+                        if (isSentByUser) {
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.DoneAll,
+                                contentDescription = "Read",
+                                modifier = Modifier.size(12.dp),
+                                tint = if (message.seen)
+                                    Color(0xFF53BDEB)
+                                else
+                                    textColor.copy(alpha = 0.45f)
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Enhanced dropdown menu
+        // Dropdown menu
         DropdownMenu(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
             offset = menuPositionDp,
-            modifier = Modifier
-                .shadow(8.dp, RoundedCornerShape(12.dp))
+            modifier = Modifier.shadow(8.dp, RoundedCornerShape(12.dp))
         ) {
             DropdownMenuItem(
                 text = {
