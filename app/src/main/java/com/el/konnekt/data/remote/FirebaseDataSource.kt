@@ -2,10 +2,10 @@ package com.el.konnekt.data.remote
 
 import android.content.Context
 import android.util.Log
-import com.el.konnekt.data.Message
+import com.el.konnekt.data.models.Message
 import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.UserEntity
-import com.el.konnekt.ui.activities.mainpage.Friend
+import com.el.konnekt.data.models.Friend
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
 import com.google.firebase.database.ChildEventListener

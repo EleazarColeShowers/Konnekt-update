@@ -1,6 +1,5 @@
 package com.el.konnekt.data.models
 
-import com.el.konnekt.ui.activities.mainpage.Friend
 import com.el.konnekt.ui.activities.mainpage.GroupChat
 
 

@@ -10,13 +10,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.el.konnekt.data.core.NotificationHelper
+import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.FriendEntity
 import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.UserEntity
+import com.el.konnekt.data.models.Friend
+import com.el.konnekt.data.models.Message
 import com.el.konnekt.data.repository.ChatRepository
+import com.el.konnekt.data.repository.FriendRepository
+import com.el.konnekt.data.repository.GroupRepository
+import com.el.konnekt.data.repository.MessageRepository
 import com.el.konnekt.ui.activities.mainpage.ChatItem
-import com.el.konnekt.ui.activities.mainpage.Friend
 import com.el.konnekt.ui.activities.mainpage.GroupChat
 import com.google.firebase.Firebase
 import com.google.firebase.database.database
@@ -33,11 +37,11 @@ import kotlin.collections.map
 
 class ChatViewModel(
     application: Application,
-    private val repo: ChatRepository
-
+    private val repo: ChatRepository,
+    private val messageRepository: MessageRepository,
+    private val groupRepository: GroupRepository,
+    private val friendRepository: FriendRepository
 ) : AndroidViewModel(application) {
-
-    private val chatAesKeysMap = mutableMapOf<String, ByteArray>()
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
@@ -54,8 +58,8 @@ class ChatViewModel(
     private val _combinedChatList = MutableStateFlow<List<ChatItem>>(emptyList())
     val combinedChatList: StateFlow<List<ChatItem>> = _combinedChatList
 
-    // internal mutable state for messages when observing a chat
-    private val messageBuffer = mutableListOf<Message>()
+    private val _receivedRequestsCount = MutableStateFlow(0)
+    val receivedRequestsCount: StateFlow<Int> = _receivedRequestsCount
 
     // --------------------------
     // utility: network check
@@ -99,12 +103,8 @@ class ChatViewModel(
 
                 messageRef.removeValue().await()
 
-                // Remove from local buffer
-                messageBuffer.removeAll { it.id == messageId }
-                val sorted = messageBuffer.sortedByDescending { it.timestamp }
-                withContext(Dispatchers.Main) {
-                    _messages.value = sorted
-                }
+                // Remove from local state
+                _messages.value = _messages.value.filter { it.id != messageId }
 
                 Log.d("ChatViewModel", "Auto-deleted expired message: $messageId")
             } catch (e: Exception) {
@@ -208,78 +208,20 @@ class ChatViewModel(
         }
     }
 
-    // updateMessages (decryption)
+    // updateMessages - for manual updates
     fun updateMessages(chatId: String, newList: List<Message>) {
         viewModelScope.launch {
-            _messages.value = newList
+            _messages.value = newList.sortedByDescending { it.timestamp }
         }
     }
 
-    // ⭐ UPDATED: observeMessages - now checks for expired messages and schedules auto-deletion
-    fun observeMessages(
-        context: Context,
-        chatId: String,
-        currentUserId: String,
-        isChatOpen: Boolean,
-        requestNotificationPermission: () -> Unit
-    ) {
-        messageBuffer.clear()
-        repo.observeMessages(chatId, onNewMessage = { snapshot, message, hasLoadedInitial ->
-            // message deleted for current user?
-            if (message.deletedFor?.containsKey(currentUserId) == true) {
-                messageBuffer.removeAll { it.id == message.id }
-                val sorted = messageBuffer.sortedByDescending { it.timestamp }
-                updateMessages(chatId, sorted)
-                return@observeMessages
+    // observeMessages - listen to real-time updates from repository
+    fun observeMessages(chatId: String, currentUserId: String) {
+        viewModelScope.launch {
+            messageRepository.observeMessages(chatId, currentUserId).collect { messageList ->
+                _messages.value = messageList.sortedByDescending { it.timestamp }
             }
-
-            // ⭐ NEW: Check if message is older than 24 hours
-            val currentTime = System.currentTimeMillis()
-            val twentyFourHours = 24 * 60 * 60 * 1000L
-            val messageAge = currentTime - message.timestamp
-
-            if (messageAge > twentyFourHours) {
-                // Message is expired, delete it immediately
-                viewModelScope.launch {
-                    deleteExpiredMessage(chatId, message.id)
-                }
-                return@observeMessages
-            } else {
-                // ⭐ NEW: Schedule auto-deletion for this message
-                scheduleMessageAutoDelete(chatId, message.id, message.timestamp)
-            }
-
-            // mark seen if appropriate
-            if (message.receiverId == currentUserId && !message.seen && isChatOpen) {
-                try {
-                    snapshot.ref.child("seen").setValue(true)
-                } catch (e: Exception) {
-                    Log.e("ChatVM", "Failed to mark seen: ${e.message}")
-                }
-            }
-
-            // notification logic: only trigger when after initial load
-            if (hasLoadedInitial && message.senderId != currentUserId && message.receiverId == currentUserId) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    val perm = android.content.pm.PackageManager.PERMISSION_GRANTED
-                    val status = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
-                    if (status != perm) {
-                        requestNotificationPermission()
-                    } else {
-                        NotificationHelper.showNotification(context, "New message from ${message.senderName}", message.text)
-                    }
-                } else {
-                    NotificationHelper.showNotification(context, "New message from ${message.senderName}", message.text)
-                }
-            }
-
-            // keep buffer and update state flow (sorted by timestamp)
-            messageBuffer.add(0, message)
-            val sorted = messageBuffer.sortedByDescending { it.timestamp }
-            updateMessages(chatId, sorted)
-        }, onCancelled = { error ->
-            Log.e("ChatVM", "observeMessages cancelled: ${error.message}")
-        })
+        }
     }
 
     fun stopObservingMessages(chatId: String) {
@@ -296,11 +238,6 @@ class ChatViewModel(
         })
     }
 
-//    fun stopObservingTyping(chatId: String, receiverId: String) {
-//        repo.removeTypingListener(chatId, receiverId)
-//    }
-
-
     fun fetchCurrentUserName(userId: String, onResult: (String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val name = repo.fetchUsername(userId)
@@ -310,10 +247,14 @@ class ChatViewModel(
         }
     }
 
-
     fun removeFriendFromDatabase(currentUserId: String, friendId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            repo.removeFriend(currentUserId, friendId)
+            val result = friendRepository.removeFriend(currentUserId, friendId)
+            if (result.isSuccess) {
+                Log.d("ChatViewModel", "Friend removed successfully")
+            } else {
+                Log.e("ChatViewModel", "Failed to remove friend: ${result.exceptionOrNull()?.message}")
+            }
         }
     }
 
@@ -329,6 +270,55 @@ class ChatViewModel(
                     )
                 }
                 _groupChats.value = groupChats
+            }
+        }
+    }
+
+    fun sendMessage(
+        chatId: String,
+        senderId: String,
+        senderName: String,
+        receiverId: String,
+        text: String,
+        replyToId: String? = null
+    ) {
+        viewModelScope.launch {
+            messageRepository.sendMessage(chatId, senderId, senderName, receiverId, text, replyToId)
+        }
+    }
+
+    // Edit message
+    fun editMessage(chatId: String, messageId: String, newText: String) {
+        viewModelScope.launch {
+            messageRepository.editMessage(chatId, messageId, newText)
+        }
+    }
+
+    // Delete message for self
+    fun deleteMessageForSelf(chatId: String, messageId: String, userId: String) {
+        viewModelScope.launch {
+            messageRepository.deleteMessageForSelf(chatId, messageId, userId)
+        }
+    }
+
+    // Delete message for everyone
+    fun deleteMessageForEveryone(chatId: String, messageId: String) {
+        viewModelScope.launch {
+            messageRepository.deleteMessageForEveryone(chatId, messageId)
+        }
+    }
+
+    // Mark messages as seen
+    fun markMessagesAsSeen(chatId: String, currentUserId: String, isGroupChat: Boolean) {
+        viewModelScope.launch {
+            messageRepository.markMessagesAsSeen(chatId, currentUserId, isGroupChat)
+        }
+    }
+
+    fun observeReceivedRequestsCount(userId: String) {
+        viewModelScope.launch {
+            friendRepository.observeReceivedRequestsCount(userId).collect { count ->
+                _receivedRequestsCount.value = count
             }
         }
     }
@@ -371,7 +361,7 @@ class ChatViewModel(
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val friends = repo.loadFriendsWithDetails(userId)
+                val friends = friendRepository.loadFriendsWithDetails(userId)
                 withContext(Dispatchers.Main) {
                     onFriendsLoaded(friends)
                 }
@@ -383,10 +373,18 @@ class ChatViewModel(
             }
         }
     }
+
+    fun fetchGroupMembers(currentUserId: String, groupId: String) {
+        viewModelScope.launch {
+            val groups = groupRepository.fetchGroupChats(currentUserId)
+            val group = groups.find { it.groupId == groupId }
+            _groupMembers.value = group?.members ?: emptyList()
+        }
+    }
+
     fun updateGroupChats(groups: List<GroupChat>) {
         _groupChats.value = groups
     }
-
 
     override fun onCleared() {
         super.onCleared()
@@ -400,25 +398,18 @@ class ChatViewModelFactory(
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
+            val messageRepository = MessageRepository()
+            val friendRepository = FriendRepository()
+            val groupRepository = GroupRepository(AppDatabase.getDatabase(application))
+
             @Suppress("UNCHECKED_CAST")
-            return ChatViewModel(application, repo) as T
+            return ChatViewModel(
+                application, repo,
+                messageRepository,
+                groupRepository,
+                friendRepository,
+            ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
-
-data class Message(
-    val id: String = "",
-    val senderId: String = "",
-    val senderName: String = "",
-    val receiverId: String = "",
-    var text: String = "",
-    val timestamp: Long = 0,
-    val seen: Boolean = false,
-    val replyTo: String? = null,
-    val edited: Boolean = false,
-    val deletedFor: Map<String, Boolean>? = null,
-    val replyToIv: String? = null,
-    var decryptedText: String? = null,
-    val deletedForEveryone: Boolean = false
-)

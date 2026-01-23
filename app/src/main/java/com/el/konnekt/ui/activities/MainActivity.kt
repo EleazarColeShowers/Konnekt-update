@@ -70,7 +70,6 @@ class MainActivity : ComponentActivity() {
                                 val factory = ChatViewModelFactory(application, repo)
                                 val chatViewModel = ViewModelProvider(this@MainActivity, factory)[ChatViewModel::class.java]
                                 ChatManager.startListeningForMessages(
-                                    applicationContext,
                                     chatId,
                                     currentUserId,
                                     chatViewModel

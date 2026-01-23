@@ -3,12 +3,11 @@ package com.el.konnekt.data.repository
 import android.content.Context
 import android.util.Log
 import com.el.konnekt.data.remote.FirebaseDataSource
-import com.el.konnekt.data.Message
+import com.el.konnekt.data.models.Message
 import com.el.konnekt.data.local.FriendEntity
 import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.LocalDataSource
 import com.el.konnekt.data.local.UserEntity
-import com.el.konnekt.ui.activities.mainpage.Friend
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -28,8 +27,8 @@ class ChatRepository(
     suspend fun fetchUserProfile(context: Context, userId: String): Pair<String?, String?> =
         firebase.fetchUserProfile(context, userId)
 
-    suspend fun loadFriendsWithDetails(userId: String): List<Pair<Friend, Map<String, String>>> =
-        firebase.loadFriendsWithDetails(userId)
+//    suspend fun loadFriendsWithDetails(userId: String): List<Pair<Friend, Map<String, String>>> =
+//        firebase.loadFriendsWithDetails(userId)
 
     suspend fun fetchGroupMembers(groupId: String): List<String> = firebase.fetchGroupMembers(groupId)
 

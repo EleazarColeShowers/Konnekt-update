@@ -2,13 +2,9 @@ package com.el.konnekt.ui.activities.mainpage
 
 import android.Manifest
 import android.app.Application
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -61,7 +57,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -73,7 +68,6 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
@@ -83,7 +77,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -94,7 +87,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -108,9 +100,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -137,24 +127,16 @@ import com.google.firebase.database.database
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.DpOffset
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
-import coil.compose.rememberAsyncImagePainter
 import com.android.identity.util.UUID
 import com.el.konnekt.ui.activities.calls.CallActivity
 import com.el.konnekt.data.local.AppDatabase
@@ -164,24 +146,20 @@ import com.el.konnekt.data.ChatViewModelFactory
 import com.el.konnekt.data.remote.FirebaseDataSource
 import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.LocalDataSource
-import com.el.konnekt.data.Message
-import com.el.konnekt.data.models.TempGroupIdHolder
+import com.el.konnekt.data.models.Message
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import kotlin.collections.filterNot
 import kotlin.collections.find
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
-import kotlin.math.absoluteValue
 import com.el.konnekt.R
-
-
+import com.el.konnekt.data.models.Friend
+import com.el.konnekt.utils.MessageObfuscator
+import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
+import com.el.konnekt.utils.formatTimestamp
+import com.el.konnekt.utils.generateColorFromId
 
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -386,34 +364,6 @@ fun MessagePage() {
     }
 }
 
-fun createNotificationChannel(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val channel = NotificationChannel(
-            "default_channel",
-            "Default Channel",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Used for default notifications"
-        }
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-        Log.d("NotificationChannel", "Notification channel created")
-    }
-}
-
-//fun showNotification(context: Context) {
-//    Log.d("Notification", "showNotification() called")
-//
-//    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-//    val builder = NotificationCompat.Builder(context, "default_channel")
-//        .setSmallIcon(android.R.drawable.ic_dialog_info)
-//        .setContentTitle("Notification Title")
-//        .setContentText("This is a Jetpack Compose notification.")
-//        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-//
-//    notificationManager.notify(1, builder.build())
-//    Log.d("Notification", "Notification sent")
-//}
 
 @Composable
 fun ArchiveScreen() {
@@ -1061,62 +1011,59 @@ data class GroupChat(
     val groupImage: String = ""
 )
 
-data class Friend(
-    val friendId: String = "",
-    val timestamp: Long = 0L
-)
 
-suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
-    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
-    val usersRef = FirebaseDatabase.getInstance().reference.child("users")
 
-    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
-        override fun onDataChange(snapshot: DataSnapshot) {
-            val groupChats = mutableListOf<GroupChat>()
-            val allFetchTasks = mutableListOf<Job>()
-
-            for (groupSnapshot in snapshot.children) {
-                val key = groupSnapshot.key ?: continue
-                if (!key.startsWith("group_")) continue
-
-                val membersSnapshot = groupSnapshot.child("members")
-                val memberIds = membersSnapshot.children.mapNotNull { it.key }
-
-                if (currentUserId in memberIds) {
-                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
-                    val groupId = key.removePrefix("group_")
-                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
-
-                    val members = mutableListOf<String>()
-
-                    val job = CoroutineScope(Dispatchers.IO).launch {
-                        memberIds.forEach { memberId ->
-                            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
-                            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
-                            members.add(username)
-                        }
-                    }
-                    allFetchTasks.add(job)
-
-                    val groupChat = GroupChat(
-                        groupId = groupId,
-                        groupName = groupName,
-                        members = members, // This will be populated after usernames are fetched
-                        groupImage = groupImage
-                    )
-                    groupChats.add(groupChat)
-                }
-            }
-            CoroutineScope(Dispatchers.IO).launch {
-                allFetchTasks.joinAll()
-                cont.resume(groupChats)
-            }
-        }
-        override fun onCancelled(error: DatabaseError) {
-            cont.resume(emptyList())
-        }
-    })
-}
+//suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
+//    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
+//    val usersRef = FirebaseDatabase.getInstance().reference.child("users")
+//
+//    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
+//        override fun onDataChange(snapshot: DataSnapshot) {
+//            val groupChats = mutableListOf<GroupChat>()
+//            val allFetchTasks = mutableListOf<Job>()
+//
+//            for (groupSnapshot in snapshot.children) {
+//                val key = groupSnapshot.key ?: continue
+//                if (!key.startsWith("group_")) continue
+//
+//                val membersSnapshot = groupSnapshot.child("members")
+//                val memberIds = membersSnapshot.children.mapNotNull { it.key }
+//
+//                if (currentUserId in memberIds) {
+//                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
+//                    val groupId = key.removePrefix("group_")
+//                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
+//
+//                    val members = mutableListOf<String>()
+//
+//                    val job = CoroutineScope(Dispatchers.IO).launch {
+//                        memberIds.forEach { memberId ->
+//                            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
+//                            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
+//                            members.add(username)
+//                        }
+//                    }
+//                    allFetchTasks.add(job)
+//
+//                    val groupChat = GroupChat(
+//                        groupId = groupId,
+//                        groupName = groupName,
+//                        members = members, // This will be populated after usernames are fetched
+//                        groupImage = groupImage
+//                    )
+//                    groupChats.add(groupChat)
+//                }
+//            }
+//            CoroutineScope(Dispatchers.IO).launch {
+//                allFetchTasks.joinAll()
+//                cont.resume(groupChats)
+//            }
+//        }
+//        override fun onCancelled(error: DatabaseError) {
+//            cont.resume(emptyList())
+//        }
+//    })
+//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1307,14 +1254,14 @@ fun FriendRow(
 
                 if (messages.isNotEmpty()) {
                     val lastMsg = messages.last()
-                    lastMessage = lastMsg.text
+                    // FIXED: Use chatId (not with "group_" prefix)
+                    lastMessage = MessageObfuscator.deobfuscate(lastMsg.text, chatId)
                     timestamp = lastMsg.timestamp
                 } else {
                     lastMessage = "Send Hi to your new friend!"
                     timestamp = null
                 }
 
-                // FIXED: Count unread messages
                 val unreadMessages = messages.filter { it.receiverId == currentUserId && !it.seen }
                 hasUnreadMessages = unreadMessages.isNotEmpty()
                 unreadCount = unreadMessages.size
@@ -1472,21 +1419,6 @@ fun FriendRow(
     }
 }
 
-private fun formatTimestamp(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-
-    return when {
-        diff < 60000 -> "now" // Less than 1 minute
-        diff < 3600000 -> "${diff / 60000}m" // Less than 1 hour
-        diff < 86400000 -> "${diff / 3600000}h" // Less than 1 day
-        diff < 604800000 -> "${diff / 86400000}d" // Less than 1 week
-        else -> {
-            val weeks = diff / 604800000
-            "${weeks}w"
-        }
-    }
-}
 
 @Composable
 fun GroupAsFriendRow(
@@ -1504,7 +1436,7 @@ fun GroupAsFriendRow(
     DisposableEffect(group.groupId) {
         val db = Firebase.database.reference
             .child("chats")
-            .child(group.groupId)
+            .child("group_${group.groupId}")
             .child("messages")
 
         val listener = object : ValueEventListener {
@@ -1513,7 +1445,8 @@ fun GroupAsFriendRow(
                 if (messages.isNotEmpty()) {
                     val latestMessage = messages.last()
                     val senderName = latestMessage.senderName
-                    val text = latestMessage.text
+                    val text = MessageObfuscator.deobfuscate(latestMessage.text, group.groupId)
+//                    val text = MessageObfuscator.deobfuscate(latestMessage.text, "group_${group.groupId}")
                     lastMessage = "$senderName: $text"
                     timestamp = latestMessage.timestamp
 
@@ -1690,6 +1623,7 @@ sealed class ChatItem {
     ) : ChatItem()
 }
 
+
 @Composable
 fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
@@ -1703,7 +1637,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     var isChatOpen by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<Message?>(null) }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
-    var groupMembers by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val context = LocalContext.current
     val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
@@ -1726,19 +1659,37 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
     val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
 
     val db = Firebase.database.reference
+    val encryptionChatId = if (isGroupChat) {
+        chatId.removePrefix("group_")
+    } else {
+        chatId
+    }
     val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
-    val messagesRef = db.child("chats").child(firebaseChatId).child("messages")
-    val typingRef = db.child("chats").child(chatId).child("typing")
+
+    val firebasePath = if (isGroupChat) {
+        chatId  // Already has "group_" prefix
+    } else {
+        chatId
+    }
+    val typingRef = db.child("chats").child(firebasePath).child("typing")
+
+    val encryptionKey = remember(chatId, isGroupChat) {
+        if (isGroupChat) {
+            chatId.removePrefix("group_")
+        } else {
+            chatId
+        }
+    }
 
     // --- ViewModel observers ---
-    val messages by viewModel.messages
-        .map { it.sortedByDescending { msg -> msg.timestamp } }
-        .collectAsState(initial = emptyList())
-
+    val messages by viewModel.messages.collectAsState()
     val isFriendTyping by viewModel.isFriendTyping.collectAsState()
+    val groupMembers by viewModel.groupMembers.collectAsState()
+
     val filteredMembers = groupMembers.filter {
         it.startsWith(mentionQuery, ignoreCase = true)
     }
+
 
     // --- Load current username ---
     LaunchedEffect(currentUserId) {
@@ -1747,101 +1698,40 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         }
     }
 
-    // --- Load and observe messages ---
+    LaunchedEffect(chatId) {
+        // ✅ FIXED: Use chatId as-is (don't remove prefix)
+        viewModel.observeMessages(chatId, currentUserId)
+
+        if (isGroupChat) {
+            val groupId = chatId.removePrefix("group_")
+            viewModel.fetchGroupMembers(currentUserId, groupId)
+        } else {
+            viewModel.observeTyping(chatId, receiverUserId)
+        }
+    }
+
+
+    // --- Mark messages as seen ---
     LaunchedEffect(chatId, isChatOpen) {
         if (!isChatOpen) return@LaunchedEffect
-        messagesRef.orderByChild("timestamp").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val messageList = mutableListOf<Message>()
-                for (messageSnapshot in snapshot.children) {
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    if (message != null) {
-                        messageList.add(message)
-                    }
-                }
-                viewModel.updateMessages(chatId, messageList)
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatScreen", "Failed to load messages: ${error.message}")
-            }
-        })
+        kotlinx.coroutines.delay(300)
+        viewModel.markMessagesAsSeen(chatId, currentUserId, isGroupChat)
     }
 
     DisposableEffect(Unit) {
         isChatOpen = true
         onDispose {
             isChatOpen = false
+            viewModel.stopObservingMessages(chatId)
             if (!isGroupChat) {
                 typingRef.child(currentUserId).setValue(false)
             }
         }
     }
 
-    LaunchedEffect(chatId) {
-        val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
-
-        viewModel.observeMessages(
-            context = context,
-            chatId = firebaseChatId,
-            currentUserId = currentUserId,
-            isChatOpen = true,
-            requestNotificationPermission = {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        )
-        if (isGroupChat) {
-            val groupChatList = fetchGroupChats(currentUserId)
-            val group = groupChatList.find { it.groupId == chatId.removePrefix("group_") }
-            groupMembers = group?.members ?: emptyList()
-        } else {
-            viewModel.observeTyping(firebaseChatId, receiverUserId)
-        }
-    }
-
-    LaunchedEffect(chatId, isChatOpen) {
-        if (!isChatOpen) return@LaunchedEffect
-
-        // Small delay to ensure chat is fully loaded
-        kotlinx.coroutines.delay(300)
-
-        messagesRef.get().addOnSuccessListener { snapshot ->
-            snapshot.children.forEach { messageSnapshot ->
-                val message = messageSnapshot.getValue(Message::class.java)
-
-                // For group chats, mark all messages from others as seen
-                // For 1-on-1 chats, mark messages where current user is receiver
-                val shouldMarkSeen = if (isGroupChat) {
-                    message != null && message.senderId != currentUserId && !message.seen
-                } else {
-                    message != null && message.receiverId == currentUserId && !message.seen
-                }
-
-                if (shouldMarkSeen) {
-                    messageSnapshot.ref.child("seen").setValue(true)
-                        .addOnSuccessListener {
-                            Log.d("ChatScreen", "Message ${message?.id} marked as seen")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("ChatScreen", "Failed to mark message as seen: ${e.message}")
-                        }
-                }
-            }
-        }.addOnFailureListener { e ->
-            Log.e("ChatScreen", "Failed to load messages for marking seen: ${e.message}")
-        }
-    }
-
-
     // --- Reply handler ---
     fun setReplyingTo(message: Message) {
-        val decrypted = try {
-            message.text
-        } catch (e: Exception) {
-            Log.e("ChatScreen", "Failed to decrypt message", e)
-            "[error]"
-        }
-        replyingTo = message.copy(decryptedText = decrypted)
+        replyingTo = message
     }
 
     // --- UI ---
@@ -1947,7 +1837,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                             color = Color(0xFF2F9ECE)
                                         )
                                     )
-                                    // Animated typing indicator
                                     Row(
                                         modifier = Modifier.padding(start = 4.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -2006,36 +1895,23 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                     reverseLayout = true,
                     contentPadding = PaddingValues(8.dp)
                 ) {
-                    items(messages) { message ->
+                    items(messages, key = { it.id }) { message ->
                         MessageBubble(
                             message = message,
                             currentUserId = currentUserId,
                             onReply = { setReplyingTo(it) },
                             isGroupChat = isGroupChat,
                             onEdit = { messageToEdit ->
-                                messageText = messageToEdit.text
+                                messageText = messageToEdit.getDisplayText()
                                 editingMessageId = messageToEdit.id
                             },
+                            chatId = chatId,
+                            encryptionKey = encryptionKey,
                             onDeleteForSelf = { msg ->
-                                val specificMessageRef =
-                                    db.child("chats").child(chatId).child("messages").child(msg.id)
-                                specificMessageRef.child("deletedFor").child(currentUserId)
-                                    .setValue(true)
+                                viewModel.deleteMessageForSelf(chatId, msg.id, currentUserId)
                             },
                             onDeleteForEveryone = { msg ->
-                                if (msg.id.isNotBlank()) {
-                                    val specificMessageRef =
-                                        db.child("chats").child(chatId).child("messages").child(msg.id)
-                                    specificMessageRef.removeValue()
-                                        .addOnSuccessListener {
-                                            Log.d("ChatScreen", "Message deleted for everyone")
-                                        }
-                                        .addOnFailureListener { error ->
-                                            Log.e("ChatScreen", "Failed to delete message: ${error.message}")
-                                        }
-                                } else {
-                                    Log.e("ChatScreen", "Error: Message ID is blank")
-                                }
+                                viewModel.deleteMessageForEveryone(chatId, msg.id)
                             },
                             messages = messages
                         )
@@ -2094,7 +1970,7 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                             fontSize = 13.sp
                                         )
                                         Text(
-                                            text = message.text,
+                                            text = message.getDisplayText(),
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                             fontSize = 13.sp,
                                             maxLines = 2,
@@ -2113,7 +1989,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                         }
                     }
 
-                    // MESSAGE INPUT
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Bottom
@@ -2139,7 +2014,8 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                                     }
                                     if (!isGroupChat) {
                                         typingRef.child(currentUserId).setValue(it.isNotEmpty())
-                                    } },
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = {
                                     Text(
@@ -2170,38 +2046,19 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
                             IconButton(
                                 onClick = {
                                     if (messageText.isNotBlank()) {
-                                        val encryptedText = messageText
-
                                         if (editingMessageId != null) {
-                                            val messageUpdates = mapOf(
-                                                "text" to encryptedText,
-                                                "edited" to true
-                                            )
-                                            messagesRef.child(editingMessageId!!).updateChildren(messageUpdates)
-                                                .addOnSuccessListener {
-                                                    editingMessageId = null
-                                                    messageText = ""
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    Log.e("Chat", "Failed to edit message: ${e.message}")
-                                                }
-                                            return@IconButton
-                                        }
-
-                                        val messageKey = messagesRef.push().key
-                                        if (messageKey != null) {
-                                            val newMessage = Message(
-                                                id = messageKey,
+                                            viewModel.editMessage(chatId, editingMessageId!!, messageText)
+                                            editingMessageId = null
+                                            messageText = ""
+                                        } else {
+                                            viewModel.sendMessage(
+                                                chatId = firebasePath,
                                                 senderId = currentUserId,
                                                 senderName = currentUsername,
                                                 receiverId = receiverUserId,
-                                                text = encryptedText,
-                                                timestamp = System.currentTimeMillis() + (0..999).random(),
-                                                seen = false,
-                                                replyTo = replyingTo?.id,
-                                                edited = false
+                                                text = messageText,
+                                                replyToId = replyingTo?.id
                                             )
-                                            messagesRef.child(messageKey).setValue(newMessage)
                                             messageText = ""
                                             replyingTo = null
                                         }
@@ -2256,7 +2113,6 @@ fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
         }
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageBubble(
@@ -2265,14 +2121,27 @@ fun MessageBubble(
     messages: List<Message>,
     onReply: (Message) -> Unit,
     onEdit: (Message) -> Unit,
+    chatId: String,
+    encryptionKey: String,
     onDeleteForSelf: (Message) -> Unit,
     onDeleteForEveryone: (Message) -> Unit,
     isGroupChat: Boolean = false
 ) {
-    // FIXED: Direct color generation - consistent per user
     val senderColor = remember(message.senderId) {
         generateColorFromId(message.senderId)
     }
+
+    val encryptionChatId = if (isGroupChat) {
+        chatId.removePrefix("group_")
+    } else {
+        chatId
+    }
+
+    val displayText = remember(message.text, encryptionKey) {
+        MessageObfuscator.deobfuscate(message.text, encryptionKey)
+    }
+
+
 
     val isSentByUser = message.senderId == currentUserId
     val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF2C2C2E) else Color(0xFFE8E8E8)
@@ -2288,11 +2157,6 @@ fun MessageBubble(
         targetValue = rawOffsetX,
         animationSpec = tween(durationMillis = 200), label = ""
     )
-    var menuPositionPx by remember { mutableStateOf(Offset.Zero) }
-    val density = LocalDensity.current
-    var menuPositionDp by remember {
-        mutableStateOf(DpOffset(0.dp, 0.dp))
-    }
 
     Row(
         modifier = Modifier
@@ -2302,7 +2166,7 @@ fun MessageBubble(
     ) {
         Surface(
             modifier = Modifier
-                .wrapContentWidth()
+                .widthIn(max = 280.dp) // FIXED: Better max width constraint
                 .offset(x = offsetX.dp)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
@@ -2315,15 +2179,9 @@ fun MessageBubble(
                         rawOffsetX = (rawOffsetX + dragAmount * 0.5f).coerceIn(-50f, 50f)
 
                         if (!hasReplied && (rawOffsetX <= -50f || rawOffsetX >= 50f)) {
-                            onReply(message)
+                            onReply(message.copy(text = displayText))
                             hasReplied = true
                         }
-                    }
-                }
-                .onGloballyPositioned { coordinates ->
-                    menuPositionPx = coordinates.boundsInWindow().bottomLeft
-                    menuPositionDp = with(density) {
-                        DpOffset(menuPositionPx.x.toDp(), menuPositionPx.y.toDp())
                     }
                 }
                 .combinedClickable(
@@ -2340,29 +2198,30 @@ fun MessageBubble(
             shadowElevation = 0.5.dp
         ) {
             Column(
-                modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 // Sender name for group chats
                 if (isGroupChat && !isSentByUser) {
                     Text(
                         text = message.senderName,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
                         color = senderColor,
-                        modifier = Modifier.padding(bottom = 2.dp)
+                        modifier = Modifier.padding(bottom = 3.dp)
                     )
                 }
 
-                // Reply preview
+                // Reply preview - FIXED: Better width management
                 message.replyTo?.let { replyId ->
                     val repliedMessage = messages.find { it.id == replyId }
-                    val repliedText = repliedMessage?.text ?: "[message unavailable]"
+                    val repliedText = repliedMessage?.let {
+                        MessageObfuscator.deobfuscate(it.text, chatId)
+                    } ?: "[message unavailable]"
 
                     Surface(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp),
+                            .wrapContentWidth()
+                            .padding(bottom = 6.dp),
                         shape = RoundedCornerShape(8.dp),
                         color = if (isSentByUser)
                             Color.White.copy(alpha = 0.15f)
@@ -2370,25 +2229,27 @@ fun MessageBubble(
                             Color.Black.copy(alpha = 0.08f)
                     ) {
                         Row(
-                            modifier = Modifier.padding(6.dp),
+                            modifier = Modifier.padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
-                                    .height(32.dp)
+                                    .height(36.dp)
                                     .background(
                                         if (isSentByUser) Color.White.copy(alpha = 0.7f)
                                         else senderColor,
                                         RoundedCornerShape(2.dp)
                                     )
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(
+                                modifier = Modifier.weight(1f, fill = false)
+                            ) {
                                 Text(
                                     text = repliedMessage?.senderName ?: "Unknown",
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontWeight = FontWeight.Bold,
                                     color = if (isSentByUser)
                                         Color.White.copy(alpha = 0.9f)
                                     else
@@ -2396,12 +2257,14 @@ fun MessageBubble(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = repliedText,
                                     fontSize = 12.sp,
                                     color = textColor.copy(alpha = 0.7f),
                                     maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    lineHeight = 16.sp
                                 )
                             }
                         }
@@ -2411,7 +2274,7 @@ fun MessageBubble(
                 // Message text with mentions
                 val annotated = buildAnnotatedString {
                     val regex = "@\\w+".toRegex()
-                    val rawText = message.text
+                    val rawText = displayText
                     var currentIndex = 0
                     regex.findAll(rawText).forEach { match ->
                         append(rawText.substring(currentIndex, match.range.first))
@@ -2431,26 +2294,33 @@ fun MessageBubble(
                     }
                     append(rawText.substring(currentIndex))
                 }
-                Row(
-                    modifier = Modifier.wrapContentWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    // Message text
+
+                // Message content
+                Column {
                     Text(
                         text = annotated,
                         color = textColor,
                         fontSize = 15.sp,
-                        modifier = Modifier.weight(1f, fill = false)
+                        lineHeight = 20.sp
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                    // Timestamp + read receipt inline
+                    // Timestamp and read receipt
                     Row(
+                        modifier = Modifier.align(Alignment.End),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End
                     ) {
+                        if (message.edited) {
+                            Text(
+                                text = "edited • ",
+                                fontSize = 9.sp,
+                                color = textColor.copy(alpha = 0.45f),
+                                fontStyle = FontStyle.Italic
+                            )
+                        }
+
                         Text(
                             text = formatTimestamp(message.timestamp),
                             fontSize = 9.sp,
@@ -2458,7 +2328,7 @@ fun MessageBubble(
                         )
 
                         if (isSentByUser) {
-                            Spacer(modifier = Modifier.width(2.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Icon(
                                 imageVector = Icons.Default.DoneAll,
                                 contentDescription = "Read",
@@ -2474,107 +2344,179 @@ fun MessageBubble(
             }
         }
 
-        // Dropdown menu
         DropdownMenu(
             expanded = showMenu,
             onDismissRequest = { showMenu = false },
-            offset = menuPositionDp,
-            modifier = Modifier.shadow(8.dp, RoundedCornerShape(12.dp))
+            modifier = Modifier
+                .widthIn(min = 180.dp, max = 220.dp)
+                .background(
+                    MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(16.dp)
+                )
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    RoundedCornerShape(16.dp)
+                )
         ) {
+            // Reply option
             DropdownMenuItem(
                 text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = CircleShape,
+                            color = Color(0xFF2F9ECE).copy(alpha = 0.1f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Reply,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFF2F9ECE)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Reply", fontSize = 14.sp)
+                        Text(
+                            "Reply",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
                 onClick = {
-                    onReply(message)
+                    onReply(message.copy(text = displayText))
                     showMenu = false
-                }
+                },
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
             )
 
+            // Edit option (if applicable)
             if (isSentByUser && isEditable) {
-                HorizontalDivider()
                 DropdownMenuItem(
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(32.dp),
+                                shape = CircleShape,
+                                color = Color(0xFF2F9ECE).copy(alpha = 0.1f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = Color(0xFF2F9ECE)
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Edit", fontSize = 14.sp)
+                            Text(
+                                "Edit",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     },
                     onClick = {
-                        onEdit(message)
+                        onEdit(message.copy(text = displayText))
                         showMenu = false
-                    }
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
 
-            HorizontalDivider()
+            // Divider before delete options
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            )
+
+            // Delete for me
             DropdownMenuItem(
                 text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(32.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Delete for Me", fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+                        Text(
+                            "Delete for Me",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 },
                 onClick = {
                     onDeleteForSelf(message)
                     showMenu = false
-                }
+                },
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
             )
 
             if (isSentByUser && isDeletableForEveryone) {
-                HorizontalDivider()
                 DropdownMenuItem(
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(32.dp),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Delete for Everyone", fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+                            Text(
+                                "Delete for Everyone",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     },
                     onClick = {
                         onDeleteForEveryone(message)
                         showMenu = false
-                    }
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }
         }
     }
-}
-
-fun generateColorFromId(id: String): Color {
-    val colors = listOf(
-        Color(0xFFEF5350), Color(0xFFAB47BC), Color(0xFF42A5F5),
-        Color(0xFF26A69A), Color(0xFFFF7043), Color(0xFF66BB6A),
-        Color(0xFFFFCA28), Color(0xFF7E57C2)
-    )
-    val index = (id.hashCode().absoluteValue) % colors.size
-    return colors[index]
 }
 
 
