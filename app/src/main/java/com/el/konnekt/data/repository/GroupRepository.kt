@@ -4,7 +4,7 @@ import android.net.Uri
 import android.util.Log
 import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.GroupEntity
-import com.el.konnekt.ui.activities.mainpage.GroupChat
+import com.el.konnekt.data.models.GroupChat
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase

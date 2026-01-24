@@ -1,80 +1,44 @@
 package com.el.konnekt.ui.activities.mainpage
 
-import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.StartOffset
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -115,7 +79,6 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import com.el.konnekt.ui.activities.Settings
 import com.el.konnekt.ui.activities.konnekt.Konnekt
-import com.el.konnekt.ui.activities.konnekt.loadReceivedRequestsWithDetails
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
@@ -126,15 +89,8 @@ import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import com.android.identity.util.UUID
@@ -150,16 +106,16 @@ import com.el.konnekt.data.models.Message
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.collections.filterNot
 import kotlin.collections.find
 import com.el.konnekt.R
 import com.el.konnekt.data.models.Friend
+import com.el.konnekt.data.models.GroupChat
+import com.el.konnekt.ui.activities.message.ChatActivity
 import com.el.konnekt.utils.MessageObfuscator
 import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
 import com.el.konnekt.utils.formatTimestamp
-import com.el.konnekt.utils.generateColorFromId
 
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -170,8 +126,9 @@ class MessageActivity: ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Column(modifier= Modifier.fillMaxSize()
-                            .padding(horizontal = 15.dp)
+                    Column(modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 15.dp)
                     ) {
                         MessagePage()
                     }
@@ -181,6 +138,9 @@ class MessageActivity: ComponentActivity() {
     }
 }
 
+// Replace the MessagePage composable with this optimized version:
+
+@SuppressLint("StateFlowValueCalledInComposition")
 @Composable
 fun MessagePage() {
     val activity = LocalContext.current as? ComponentActivity
@@ -194,6 +154,10 @@ fun MessagePage() {
     val context = LocalContext.current
     val app = context.applicationContext as Application
 
+    // ADD THIS: Track loading state
+    var isLoading by remember { mutableStateOf(true) }
+
+
     val viewModel: ChatViewModel = viewModel(
         factory = ChatViewModelFactory(
             app,
@@ -203,18 +167,6 @@ fun MessagePage() {
             )
         )
     )
-//    val requestPermissionLauncher = rememberLauncherForActivityResult(
-//        contract = ActivityResultContracts.RequestPermission()
-//    ) { isGranted: Boolean ->
-//        Log.d("PermissionRequest", "Permission granted: $isGranted")
-//        if (isGranted) {
-//            showNotification(context)
-//        } else {
-//            Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
-//        }
-//    }
-
-
 
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
@@ -227,10 +179,8 @@ fun MessagePage() {
         viewModel.loadFriendsWithDetails(userId) { friends ->
             friendList.clear()
             friendList.addAll(friends)
+            isLoading = false  // ADD THIS: Mark loading as complete
         }
-    }
-    LaunchedEffect(userId) {
-        viewModel.loadGroupChats(userId)
     }
 
     LaunchedEffect(userId) {
@@ -238,7 +188,6 @@ fun MessagePage() {
     }
 
     DisposableEffect(userId) {
-        // Real-time sync for groups from Firebase
         val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
 
         val listener = object : ValueEventListener {
@@ -252,7 +201,6 @@ fun MessagePage() {
                     val membersSnapshot = groupSnapshot.child("members")
                     val memberIds = membersSnapshot.children.mapNotNull { it.key }
 
-                    // Only include groups where current user is a member
                     if (userId in memberIds) {
                         val groupName = groupSnapshot.child("groupName")
                             .getValue(String::class.java) ?: "Unnamed Group"
@@ -270,10 +218,7 @@ fun MessagePage() {
                     }
                 }
 
-                // Update ViewModel with synced groups
                 viewModel.updateGroupChats(userGroups)
-
-                // Refresh combined list
                 viewModel.refreshCombinedChatList(
                     userId,
                     friendList,
@@ -289,19 +234,17 @@ fun MessagePage() {
         }
 
         groupsRef.addValueEventListener(listener)
-
-        // Cleanup listener when composable is disposed
         onDispose {
             groupsRef.removeEventListener(listener)
         }
     }
-
 
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
     }
 
     val navController = rememberNavController()
+
     Scaffold(
         topBar = {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
@@ -330,40 +273,65 @@ fun MessagePage() {
                 }
             }
         }
-
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             NavHost(
                 navController = navController,
-                startDestination = if (friendList.isEmpty()) "message" else "friends",
+                startDestination = "friends",
                 modifier = Modifier.fillMaxSize()
             ) {
                 composable("message") { MessageFrag(username = username) }
                 composable("friends") {
-                    FriendsListScreen(
-                        friendList = friendList,
-                        navController = navController,
-                        currentUserId = userId,
-                        searchQuery = searchQuery,
-                        viewModel
-                    )
+                    // CHANGED: Show loading indicator or friends list
+                    if (isLoading) {
+                        // Loading state
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFF2F9ECE),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = "Loading chats...",
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else if (friendList.isEmpty() && viewModel.groupChats.value.isEmpty()) {
+                        // Empty state - show welcome message
+                        MessageFrag(username = username)
+                    } else {
+                        // Show friends list
+                        FriendsListScreen(
+                            friendList = friendList,
+                            navController = navController,
+                            currentUserId = userId,
+                            searchQuery = searchQuery,
+                            viewModel
+                        )
+                    }
                 }
                 composable("chat") {
-                    ChatScreen(navController, viewModel)
                 }
-
                 composable("archives") {
                     ArchiveScreen()
                 }
-
             }
         }
     }
+
     if (showCreateGroupDialog) {
         CreateGroupBottomSheet(onDismiss = { showCreateGroupDialog = false }, friendList = friendList, currentUserId = userId, viewModel = viewModel)
     }
 }
-
 
 @Composable
 fun ArchiveScreen() {
@@ -397,7 +365,7 @@ fun ArchiveScreen() {
 fun CreateGroupBottomSheet(
     friendList: List<Pair<Friend, Map<String, String>>>,
     onDismiss: () -> Unit,
-    currentUserId: String,  // ADD THIS
+    currentUserId: String,
     viewModel: ChatViewModel
 ) {
     val context = LocalContext.current
@@ -411,7 +379,7 @@ fun CreateGroupBottomSheet(
         AppDatabase::class.java,
         "instachat_db"
     ).build()
-    val launcher = rememberLauncherForActivityResult(
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         groupImageUri = uri
@@ -429,7 +397,6 @@ fun CreateGroupBottomSheet(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
             Text(
                 text = "Create New Group",
                 fontSize = 24.sp,
@@ -439,7 +406,6 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Group Image Selection - Centered
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -485,7 +451,6 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Group Name Input
             OutlinedTextField(
                 value = groupName,
                 onValueChange = { groupName = it },
@@ -502,7 +467,6 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Section Header with count
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -533,7 +497,6 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Friends List
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -567,7 +530,6 @@ fun CreateGroupBottomSheet(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Profile Image
                             Box(
                                 modifier = Modifier
                                     .size(48.dp)
@@ -621,7 +583,6 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -647,14 +608,11 @@ fun CreateGroupBottomSheet(
 
                         if (groupName.isNotBlank() && currentUserId != null) {
                             val groupId = "group_${UUID.randomUUID()}"
-                            // Remove TempGroupIdHolder - not needed
-
                             val members = selectedFriends.toMutableList().apply {
                                 if (!contains(currentUserId)) add(currentUserId)
                             }
 
                             if (groupImageUri != null) {
-                                // WITH IMAGE - Upload image first
                                 val storageRef = FirebaseStorage.getInstance().reference
                                     .child("group_images/$groupId/profile_image.jpg")
 
@@ -672,7 +630,6 @@ fun CreateGroupBottomSheet(
                                                 .child(groupId)
                                                 .setValue(groupData)
                                                 .addOnSuccessListener {
-                                                    // FIXED: Save to local DB
                                                     val groupEntity = GroupEntity(
                                                         groupId = groupId,
                                                         userId = currentUserId,
@@ -684,9 +641,7 @@ fun CreateGroupBottomSheet(
                                                         db.groupDao().insertGroup(groupEntity)
                                                     }
 
-                                                    // Trigger real-time sync
                                                     viewModel.loadGroupChats(currentUserId)
-
                                                     Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
                                                 }
                                                 .addOnFailureListener {
@@ -698,11 +653,10 @@ fun CreateGroupBottomSheet(
                                         Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
                                     }
                             } else {
-                                // WITHOUT IMAGE - FIXED VERSION
                                 val groupData = mapOf(
                                     "groupName" to groupName,
                                     "members" to members.associateWith { true },
-                                    "groupImage" to "",  // Empty string instead of null
+                                    "groupImage" to "",
                                     "adminId" to currentUserId
                                 )
 
@@ -710,12 +664,11 @@ fun CreateGroupBottomSheet(
                                     .child(groupId)
                                     .setValue(groupData)
                                     .addOnSuccessListener {
-                                        // FIXED: NOW SAVES TO LOCAL DB EVEN WITHOUT IMAGE
                                         val groupEntity = GroupEntity(
                                             groupId = groupId,
                                             userId = currentUserId,
                                             groupName = groupName,
-                                            groupImageUri = "",  // Empty string for no image
+                                            groupImageUri = "",
                                             memberIds = members.joinToString(",")
                                         )
 
@@ -723,9 +676,7 @@ fun CreateGroupBottomSheet(
                                             db.groupDao().insertGroup(groupEntity)
                                         }
 
-                                        // Trigger real-time sync
                                         viewModel.loadGroupChats(currentUserId)
-
                                         Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
                                     }
                                     .addOnFailureListener {
@@ -747,6 +698,7 @@ fun CreateGroupBottomSheet(
         }
     }
 }
+
 @Composable
 fun User(
     username: String,
@@ -842,7 +794,6 @@ fun User(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Messages title
         Text(
             text = "Messages",
             style = TextStyle(
@@ -854,7 +805,6 @@ fun User(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Modern search bar
         TextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -912,7 +862,6 @@ fun User(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Requests and Archives row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -946,18 +895,6 @@ fun User(
 
         Spacer(modifier = Modifier.height(4.dp))
     }
-}
-
-
-@Composable
-fun fetchReceivedRequestsCount(userId: String): State<Int> {
-    val requestCount = remember { mutableIntStateOf(0) }
-    LaunchedEffect(userId) {
-        loadReceivedRequestsWithDetails(userId) { receivedRequests ->
-            requestCount.intValue = receivedRequests.size
-        }
-    }
-    return requestCount
 }
 
 @Composable
@@ -1004,66 +941,7 @@ fun MessageFrag(username: String){
 
 }
 
-data class GroupChat(
-    val groupId: String,
-    val groupName: String,
-    val members: List<String>,
-    val groupImage: String = ""
-)
 
-
-
-//suspend fun fetchGroupChats(currentUserId: String): List<GroupChat> = suspendCoroutine { cont ->
-//    val dbRef = FirebaseDatabase.getInstance().reference.child("chats")
-//    val usersRef = FirebaseDatabase.getInstance().reference.child("users")
-//
-//    dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
-//        override fun onDataChange(snapshot: DataSnapshot) {
-//            val groupChats = mutableListOf<GroupChat>()
-//            val allFetchTasks = mutableListOf<Job>()
-//
-//            for (groupSnapshot in snapshot.children) {
-//                val key = groupSnapshot.key ?: continue
-//                if (!key.startsWith("group_")) continue
-//
-//                val membersSnapshot = groupSnapshot.child("members")
-//                val memberIds = membersSnapshot.children.mapNotNull { it.key }
-//
-//                if (currentUserId in memberIds) {
-//                    val groupName = groupSnapshot.child("groupName").getValue(String::class.java) ?: "Unnamed Group"
-//                    val groupId = key.removePrefix("group_")
-//                    val groupImage = groupSnapshot.child("groupImage").getValue(String::class.java) ?: ""
-//
-//                    val members = mutableListOf<String>()
-//
-//                    val job = CoroutineScope(Dispatchers.IO).launch {
-//                        memberIds.forEach { memberId ->
-//                            val usernameSnapshot = usersRef.child(memberId).child("username").get().await()
-//                            val username = usernameSnapshot.getValue(String::class.java) ?: memberId
-//                            members.add(username)
-//                        }
-//                    }
-//                    allFetchTasks.add(job)
-//
-//                    val groupChat = GroupChat(
-//                        groupId = groupId,
-//                        groupName = groupName,
-//                        members = members, // This will be populated after usernames are fetched
-//                        groupImage = groupImage
-//                    )
-//                    groupChats.add(groupChat)
-//                }
-//            }
-//            CoroutineScope(Dispatchers.IO).launch {
-//                allFetchTasks.joinAll()
-//                cont.resume(groupChats)
-//            }
-//        }
-//        override fun onCancelled(error: DatabaseError) {
-//            cont.resume(emptyList())
-//        }
-//    })
-//}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1223,6 +1101,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     }
 }
 
+
 @Composable
 fun FriendRow(
     friend: Friend,
@@ -1231,6 +1110,7 @@ fun FriendRow(
     currentUserId: String,
     viewModel: ChatViewModel
 ) {
+    val context = LocalContext.current
     val friendUsername = details["username"] ?: "Unknown"
     val friendProfileUri = details["profileImageUri"] ?: ""
 
@@ -1281,17 +1161,15 @@ fun FriendRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable {
-                navController.currentBackStackEntry
-                    ?.savedStateHandle
-                    ?.apply {
-                        set("friendId", friend.friendId)
-                        set("username", friendUsername)
-                        set("profileImageUri", friendProfileUri)
-                        set("chatId", chatId)
-                        set("currentUserId", currentUserId)
-                        set("isGroupChat", false)
-                    }
-                navController.navigate("chat")
+                val intent = Intent(context, ChatActivity::class.java).apply {
+                    putExtra("friendId", friend.friendId)
+                    putExtra("username", friendUsername)
+                    putExtra("profileImageUri", friendProfileUri)
+                    putExtra("chatId", chatId)
+                    putExtra("currentUserId", currentUserId)
+                    putExtra("isGroupChat", false)
+                }
+                context.startActivity(intent)
             }
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1427,6 +1305,7 @@ fun GroupAsFriendRow(
     currentUserId: String,
     viewModel: ChatViewModel
 ) {
+    val context = LocalContext.current
     var lastMessage by remember { mutableStateOf("No messages yet") }
     var hasUnreadMessages by remember { mutableStateOf(false) }
     var timestamp by remember { mutableStateOf<Long?>(null) }
@@ -1479,17 +1358,17 @@ fun GroupAsFriendRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable {
-                navController.currentBackStackEntry
-                    ?.savedStateHandle
-                    ?.apply {
-                        set("groupId", group.groupId)
-                        set("groupName", group.groupName)
-                        set("groupImageUri", group.groupImage)
-                        set("currentUserId", currentUserId)
-                        set("chatId", "group_${group.groupId}")
-                        set("isGroupChat", true)
-                    }
-                navController.navigate("chat")
+                val intent = Intent(context, ChatActivity::class.java).apply {
+                    putExtra("groupId", group.groupId)
+                    putExtra("username", group.groupName)  // Use groupName as username
+                    putExtra("profileImageUri", group.groupImage)
+                    putExtra("currentUserId", currentUserId)
+                    putExtra("chatId", "group_${group.groupId}")
+                    putExtra("isGroupChat", true)
+                    putExtra("groupName", group.groupName)
+                    putExtra("groupImageUri", group.groupImage)
+                }
+                context.startActivity(intent)
             }
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1625,908 +1504,6 @@ sealed class ChatItem {
 
 
 @Composable
-fun ChatScreen(navController: NavController, viewModel: ChatViewModel) {
-    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-
-    // --- State and context ---
-    var currentUsername by remember { mutableStateOf("") }
-    var messageText by remember { mutableStateOf("") }
-    var showMentionDropdown by remember { mutableStateOf(false) }
-    var mentionQuery by remember { mutableStateOf("") }
-    var cursorPosition by remember { mutableIntStateOf(0) }
-    var isChatOpen by remember { mutableStateOf(false) }
-    var replyingTo by remember { mutableStateOf<Message?>(null) }
-    var editingMessageId by remember { mutableStateOf<String?>(null) }
-
-    val context = LocalContext.current
-    val savedStateHandle = navController.previousBackStackEntry?.savedStateHandle
-
-    // --- Chat info ---
-    val isGroupChat = savedStateHandle?.get<Boolean>("isGroupChat") ?: false
-    val username = if (isGroupChat)
-        savedStateHandle?.get<String>("groupName") ?: "Group Chat"
-    else
-        savedStateHandle?.get<String>("username") ?: "Unknown"
-
-    val profileImageUri = if (isGroupChat) {
-        savedStateHandle?.get<String>("groupImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
-    } else {
-        savedStateHandle?.get<String>("profileImageUri")?.let { Uri.parse(it) } ?: Uri.EMPTY
-    }
-
-    val chatId = savedStateHandle?.get<String>("chatId") ?: ""
-    val currentUserId = savedStateHandle?.get<String>("currentUserId") ?: ""
-    val receiverUserId = if (isGroupChat) "" else savedStateHandle?.get<String>("friendId") ?: ""
-
-    val db = Firebase.database.reference
-    val encryptionChatId = if (isGroupChat) {
-        chatId.removePrefix("group_")
-    } else {
-        chatId
-    }
-    val firebaseChatId = if (isGroupChat) chatId.removePrefix("group_") else chatId
-
-    val firebasePath = if (isGroupChat) {
-        chatId  // Already has "group_" prefix
-    } else {
-        chatId
-    }
-    val typingRef = db.child("chats").child(firebasePath).child("typing")
-
-    val encryptionKey = remember(chatId, isGroupChat) {
-        if (isGroupChat) {
-            chatId.removePrefix("group_")
-        } else {
-            chatId
-        }
-    }
-
-    // --- ViewModel observers ---
-    val messages by viewModel.messages.collectAsState()
-    val isFriendTyping by viewModel.isFriendTyping.collectAsState()
-    val groupMembers by viewModel.groupMembers.collectAsState()
-
-    val filteredMembers = groupMembers.filter {
-        it.startsWith(mentionQuery, ignoreCase = true)
-    }
-
-
-    // --- Load current username ---
-    LaunchedEffect(currentUserId) {
-        viewModel.fetchCurrentUserName(currentUserId) { name ->
-            currentUsername = name ?: "Unknown"
-        }
-    }
-
-    LaunchedEffect(chatId) {
-        // ✅ FIXED: Use chatId as-is (don't remove prefix)
-        viewModel.observeMessages(chatId, currentUserId)
-
-        if (isGroupChat) {
-            val groupId = chatId.removePrefix("group_")
-            viewModel.fetchGroupMembers(currentUserId, groupId)
-        } else {
-            viewModel.observeTyping(chatId, receiverUserId)
-        }
-    }
-
-
-    // --- Mark messages as seen ---
-    LaunchedEffect(chatId, isChatOpen) {
-        if (!isChatOpen) return@LaunchedEffect
-        kotlinx.coroutines.delay(300)
-        viewModel.markMessagesAsSeen(chatId, currentUserId, isGroupChat)
-    }
-
-    DisposableEffect(Unit) {
-        isChatOpen = true
-        onDispose {
-            isChatOpen = false
-            viewModel.stopObservingMessages(chatId)
-            if (!isGroupChat) {
-                typingRef.child(currentUserId).setValue(false)
-            }
-        }
-    }
-
-    // --- Reply handler ---
-    fun setReplyingTo(message: Message) {
-        replyingTo = message
-    }
-
-    // --- UI ---
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars)
-    ) {
-        // Background wallpaper with app icon
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            val iconBitmap = remember {
-                BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher_round)
-            }
-            iconBitmap?.let {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Background",
-                    modifier = Modifier
-                        .size(300.dp)
-                        .alpha(if (isSystemInDarkTheme()) 0.7f else 0.4f),
-                    contentScale = ContentScale.Fit
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // HEADER with elevated card design
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 4.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .clickable {
-                            val intent = Intent(context, ProfileActivity::class.java).apply {
-                                if (isGroupChat) {
-                                    putExtra("groupId", chatId.removePrefix("group_"))
-                                } else {
-                                    putExtra("friendId", receiverUserId)
-                                }
-                            }
-                            context.startActivity(intent)
-                        },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                    ) {
-                        if (profileImageUri != Uri.EMPTY) {
-                            AsyncImage(
-                                model = profileImageUri.toString(),
-                                contentDescription = "Profile Image",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Gray),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = username.firstOrNull()?.uppercase() ?: "?",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = username,
-                            style = TextStyle(
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-
-                        when {
-                            isFriendTyping -> {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "typing",
-                                        style = TextStyle(
-                                            fontSize = 13.sp,
-                                            color = Color(0xFF2F9ECE)
-                                        )
-                                    )
-                                    Row(
-                                        modifier = Modifier.padding(start = 4.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        repeat(3) { index ->
-                                            val alpha by rememberInfiniteTransition(label = "").animateFloat(
-                                                initialValue = 0.3f,
-                                                targetValue = 1f,
-                                                animationSpec = infiniteRepeatable(
-                                                    animation = tween(500),
-                                                    repeatMode = RepeatMode.Reverse,
-                                                    initialStartOffset = StartOffset(index * 150)
-                                                ), label = ""
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(4.dp)
-                                                    .alpha(alpha)
-                                                    .background(Color(0xFF2F9ECE), CircleShape)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            isGroupChat -> {
-                                Text(
-                                    text = "${groupMembers.size} members",
-                                    style = TextStyle(
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-                            }
-                            else -> {
-                                Text(
-                                    text = "Active now",
-                                    style = TextStyle(
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // MESSAGES with background
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    reverseLayout = true,
-                    contentPadding = PaddingValues(8.dp)
-                ) {
-                    items(messages, key = { it.id }) { message ->
-                        MessageBubble(
-                            message = message,
-                            currentUserId = currentUserId,
-                            onReply = { setReplyingTo(it) },
-                            isGroupChat = isGroupChat,
-                            onEdit = { messageToEdit ->
-                                messageText = messageToEdit.getDisplayText()
-                                editingMessageId = messageToEdit.id
-                            },
-                            chatId = chatId,
-                            encryptionKey = encryptionKey,
-                            onDeleteForSelf = { msg ->
-                                viewModel.deleteMessageForSelf(chatId, msg.id, currentUserId)
-                            },
-                            onDeleteForEveryone = { msg ->
-                                viewModel.deleteMessageForEveryone(chatId, msg.id)
-                            },
-                            messages = messages
-                        )
-                    }
-                }
-            }
-
-            // INPUT BAR with enhanced design
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                        .imePadding()
-                ) {
-                    // REPLY PREVIEW
-                    AnimatedVisibility(
-                        visible = replyingTo != null,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        replyingTo?.let { message ->
-                            val senderName = when {
-                                message.senderId == currentUserId -> "You"
-                                isGroupChat -> message.senderName
-                                else -> username
-                            }
-
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(4.dp)
-                                            .height(40.dp)
-                                            .background(Color(0xFF2F9ECE), RoundedCornerShape(2.dp))
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = senderName,
-                                            color = Color(0xFF2F9ECE),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                        Text(
-                                            text = message.getDisplayText(),
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                            fontSize = 13.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    IconButton(onClick = { replyingTo = null }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Cancel Reply",
-                                            tint = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(24.dp),
-                            color = if (isSystemInDarkTheme()) Color(0xFF2C2C2E) else Color(0xFFF5F5F5)
-                        ) {
-                            TextField(
-                                value = messageText,
-                                onValueChange = {
-                                    messageText = it
-                                    val cursorIndex = it.length
-                                    cursorPosition = cursorIndex
-                                    val textUpToCursor = it.take(cursorIndex)
-                                    val mentionMatch = Regex("""@(\w+)$""").find(textUpToCursor)
-                                    if (mentionMatch != null) {
-                                        mentionQuery = mentionMatch.groupValues[1]
-                                        showMentionDropdown = true
-                                    } else {
-                                        showMentionDropdown = false
-                                    }
-                                    if (!isGroupChat) {
-                                        typingRef.child(currentUserId).setValue(it.isNotEmpty())
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = {
-                                    Text(
-                                        "Message...",
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                    )
-                                },
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    disabledIndicatorColor = Color.Transparent,
-                                    cursorColor = Color(0xFF2F9ECE),
-                                ),
-                                maxLines = 4
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // SEND BUTTON
-                        Surface(
-                            modifier = Modifier.size(48.dp),
-                            shape = CircleShape,
-                            color = if (messageText.isNotBlank()) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    if (messageText.isNotBlank()) {
-                                        if (editingMessageId != null) {
-                                            viewModel.editMessage(chatId, editingMessageId!!, messageText)
-                                            editingMessageId = null
-                                            messageText = ""
-                                        } else {
-                                            viewModel.sendMessage(
-                                                chatId = firebasePath,
-                                                senderId = currentUserId,
-                                                senderName = currentUsername,
-                                                receiverId = receiverUserId,
-                                                text = messageText,
-                                                replyToId = replyingTo?.id
-                                            )
-                                            messageText = ""
-                                            replyingTo = null
-                                        }
-                                    }
-                                },
-                                enabled = messageText.isNotBlank()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Send",
-                                    tint = if (messageText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Mentions dropdown
-        if (showMentionDropdown && mentionQuery.isNotBlank() && filteredMembers.isNotEmpty()) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 16.dp, bottom = 80.dp)
-                    .widthIn(max = 250.dp),
-                shape = RoundedCornerShape(12.dp),
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Column {
-                    filteredMembers.take(5).forEach { member ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = member,
-                                    fontSize = 14.sp
-                                )
-                            },
-                            onClick = {
-                                val beforeCursor = messageText.take(cursorPosition)
-                                val afterCursor = messageText.drop(cursorPosition)
-                                val updatedBefore = beforeCursor.replace(Regex("@\\w+$"), "@$member ")
-                                messageText = updatedBefore + afterCursor
-                                showMentionDropdown = false
-                                mentionQuery = ""
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun MessageBubble(
-    message: Message,
-    currentUserId: String,
-    messages: List<Message>,
-    onReply: (Message) -> Unit,
-    onEdit: (Message) -> Unit,
-    chatId: String,
-    encryptionKey: String,
-    onDeleteForSelf: (Message) -> Unit,
-    onDeleteForEveryone: (Message) -> Unit,
-    isGroupChat: Boolean = false
-) {
-    val senderColor = remember(message.senderId) {
-        generateColorFromId(message.senderId)
-    }
-
-    val encryptionChatId = if (isGroupChat) {
-        chatId.removePrefix("group_")
-    } else {
-        chatId
-    }
-
-    val displayText = remember(message.text, encryptionKey) {
-        MessageObfuscator.deobfuscate(message.text, encryptionKey)
-    }
-
-
-
-    val isSentByUser = message.senderId == currentUserId
-    val backgroundColor = if (isSentByUser) Color(0xFF2F9ECE) else if (isSystemInDarkTheme()) Color(0xFF2C2C2E) else Color(0xFFE8E8E8)
-    val textColor = if (isSentByUser) Color.White else if (isSystemInDarkTheme()) Color.White else Color.Black
-    var showMenu by remember { mutableStateOf(false) }
-    var rawOffsetX by remember { mutableFloatStateOf(0f) }
-    var hasReplied by remember { mutableStateOf(false) }
-    val currentTime = System.currentTimeMillis()
-    val isEditable = (currentTime - message.timestamp) < (10 * 60 * 1000)
-    val isDeletableForEveryone = (currentTime - message.timestamp) < (24 * 60 * 60 * 1000)
-
-    val offsetX by animateFloatAsState(
-        targetValue = rawOffsetX,
-        animationSpec = tween(durationMillis = 200), label = ""
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 1.dp),
-        horizontalArrangement = if (isSentByUser) Arrangement.End else Arrangement.Start
-    ) {
-        Surface(
-            modifier = Modifier
-                .widthIn(max = 280.dp) // FIXED: Better max width constraint
-                .offset(x = offsetX.dp)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            rawOffsetX = 0f
-                            hasReplied = false
-                        }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        rawOffsetX = (rawOffsetX + dragAmount * 0.5f).coerceIn(-50f, 50f)
-
-                        if (!hasReplied && (rawOffsetX <= -50f || rawOffsetX >= 50f)) {
-                            onReply(message.copy(text = displayText))
-                            hasReplied = true
-                        }
-                    }
-                }
-                .combinedClickable(
-                    onLongClick = { showMenu = true },
-                    onClick = {}
-                ),
-            shape = RoundedCornerShape(
-                topStart = if (isSentByUser) 18.dp else 4.dp,
-                topEnd = if (isSentByUser) 4.dp else 18.dp,
-                bottomStart = 18.dp,
-                bottomEnd = 18.dp
-            ),
-            color = backgroundColor,
-            shadowElevation = 0.5.dp
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-            ) {
-                // Sender name for group chats
-                if (isGroupChat && !isSentByUser) {
-                    Text(
-                        text = message.senderName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = senderColor,
-                        modifier = Modifier.padding(bottom = 3.dp)
-                    )
-                }
-
-                // Reply preview - FIXED: Better width management
-                message.replyTo?.let { replyId ->
-                    val repliedMessage = messages.find { it.id == replyId }
-                    val repliedText = repliedMessage?.let {
-                        MessageObfuscator.deobfuscate(it.text, chatId)
-                    } ?: "[message unavailable]"
-
-                    Surface(
-                        modifier = Modifier
-                            .wrapContentWidth()
-                            .padding(bottom = 6.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSentByUser)
-                            Color.White.copy(alpha = 0.15f)
-                        else
-                            Color.Black.copy(alpha = 0.08f)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(3.dp)
-                                    .height(36.dp)
-                                    .background(
-                                        if (isSentByUser) Color.White.copy(alpha = 0.7f)
-                                        else senderColor,
-                                        RoundedCornerShape(2.dp)
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(
-                                modifier = Modifier.weight(1f, fill = false)
-                            ) {
-                                Text(
-                                    text = repliedMessage?.senderName ?: "Unknown",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSentByUser)
-                                        Color.White.copy(alpha = 0.9f)
-                                    else
-                                        senderColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = repliedText,
-                                    fontSize = 12.sp,
-                                    color = textColor.copy(alpha = 0.7f),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    lineHeight = 16.sp
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Message text with mentions
-                val annotated = buildAnnotatedString {
-                    val regex = "@\\w+".toRegex()
-                    val rawText = displayText
-                    var currentIndex = 0
-                    regex.findAll(rawText).forEach { match ->
-                        append(rawText.substring(currentIndex, match.range.first))
-                        withStyle(
-                            SpanStyle(
-                                color = if (isSentByUser) Color.White else senderColor,
-                                fontWeight = FontWeight.SemiBold,
-                                background = if (isSentByUser)
-                                    Color.White.copy(alpha = 0.15f)
-                                else
-                                    senderColor.copy(alpha = 0.12f)
-                            )
-                        ) {
-                            append(" ${match.value} ")
-                        }
-                        currentIndex = match.range.last + 1
-                    }
-                    append(rawText.substring(currentIndex))
-                }
-
-                // Message content
-                Column {
-                    Text(
-                        text = annotated,
-                        color = textColor,
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Timestamp and read receipt
-                    Row(
-                        modifier = Modifier.align(Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        if (message.edited) {
-                            Text(
-                                text = "edited • ",
-                                fontSize = 9.sp,
-                                color = textColor.copy(alpha = 0.45f),
-                                fontStyle = FontStyle.Italic
-                            )
-                        }
-
-                        Text(
-                            text = formatTimestamp(message.timestamp),
-                            fontSize = 9.sp,
-                            color = textColor.copy(alpha = 0.45f)
-                        )
-
-                        if (isSentByUser) {
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Icon(
-                                imageVector = Icons.Default.DoneAll,
-                                contentDescription = "Read",
-                                modifier = Modifier.size(12.dp),
-                                tint = if (message.seen)
-                                    Color(0xFF53BDEB)
-                                else
-                                    textColor.copy(alpha = 0.45f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false },
-            modifier = Modifier
-                .widthIn(min = 180.dp, max = 220.dp)
-                .background(
-                    MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(16.dp)
-                )
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    RoundedCornerShape(16.dp)
-                )
-        ) {
-            // Reply option
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(32.dp),
-                            shape = CircleShape,
-                            color = Color(0xFF2F9ECE).copy(alpha = 0.1f)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Reply,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Color(0xFF2F9ECE)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            "Reply",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                onClick = {
-                    onReply(message.copy(text = displayText))
-                    showMenu = false
-                },
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-
-            // Edit option (if applicable)
-            if (isSentByUser && isEditable) {
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.size(32.dp),
-                                shape = CircleShape,
-                                color = Color(0xFF2F9ECE).copy(alpha = 0.1f)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = Color(0xFF2F9ECE)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Edit",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    },
-                    onClick = {
-                        onEdit(message.copy(text = displayText))
-                        showMenu = false
-                    },
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                )
-            }
-
-            // Divider before delete options
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 4.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-            )
-
-            // Delete for me
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(32.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            "Delete for Me",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-                onClick = {
-                    onDeleteForSelf(message)
-                    showMenu = false
-                },
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-            )
-
-            if (isSentByUser && isDeletableForEveryone) {
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.size(32.dp),
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Delete for Everyone",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    },
-                    onClick = {
-                        onDeleteForEveryone(message)
-                        showMenu = false
-                    },
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                )
-            }
-        }
-    }
-}
-
-
-enum class BottomAppBarItem {
-    Messages,
-    Calls,
-    AddFriends
-}
-
-@Composable
 fun BottomAppBar(username: String,profilePic: Uri) {
     var activeItem by remember { mutableStateOf(BottomAppBarItem.Messages) }
     val context= LocalContext.current
@@ -2579,6 +1556,12 @@ fun BottomAppBar(username: String,profilePic: Uri) {
     }
 }
 
+enum class BottomAppBarItem {
+    Messages,
+    Calls,
+    AddFriends
+}
+
 @Composable
 fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveIcon: Int, onClick: () -> Unit) {
     Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
@@ -2604,4 +1587,35 @@ fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveI
             color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
         )
     }
+}
+
+@Composable
+fun fetchReceivedRequestsCount(userId: String): State<Int> {
+    val requestCount = remember { mutableIntStateOf(0) }
+
+    DisposableEffect(userId) {
+        val requestsRef = FirebaseDatabase.getInstance()
+            .reference
+            .child("friendRequests")
+            .child(userId)
+            .child("received")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                requestCount.intValue = snapshot.childrenCount.toInt()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("FetchRequests", "Error fetching requests: ${error.message}")
+            }
+        }
+
+        requestsRef.addValueEventListener(listener)
+
+        onDispose {
+            requestsRef.removeEventListener(listener)
+        }
+    }
+
+    return requestCount
 }

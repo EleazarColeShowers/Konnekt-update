@@ -41,14 +41,7 @@
         <activity android:name=".ui.activities.Settings"/>
         <activity android:name=".ui.activities.mainpage.ProfileActivity"/>
         <activity android:name=".ui.activities.calls.CallActivity"/>
-
-<!--        <service-->
-<!--            android:name=".ui.activities.KonnektApp"-->
-<!--            android:exported="false">-->
-<!--            <intent-filter>-->
-<!--                <action android:name="com.google.firebase.MESSAGING_EVENT" />-->
-<!--            </intent-filter>-->
-<!--        </service>-->
+        <activity android:name=".ui.activities.message.ChatActivity"/>
 
     </application>
 

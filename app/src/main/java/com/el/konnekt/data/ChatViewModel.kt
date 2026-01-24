@@ -15,13 +15,13 @@ import com.el.konnekt.data.local.FriendEntity
 import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.UserEntity
 import com.el.konnekt.data.models.Friend
+import com.el.konnekt.data.models.GroupChat
 import com.el.konnekt.data.models.Message
 import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.data.repository.FriendRepository
 import com.el.konnekt.data.repository.GroupRepository
 import com.el.konnekt.data.repository.MessageRepository
 import com.el.konnekt.ui.activities.mainpage.ChatItem
-import com.el.konnekt.ui.activities.mainpage.GroupChat
 import com.google.firebase.Firebase
 import com.google.firebase.database.database
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlin.collections.find
 import kotlin.collections.map
 
 
