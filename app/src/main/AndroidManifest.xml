@@ -35,7 +35,10 @@
         <activity android:name=".ui.activities.signup.SignUpActivity"/>
         <activity android:name=".ui.activities.signup.TermsAndConditions"/>
         <activity android:name=".ui.activities.signup.ProfileSetUp"/>
-        <activity android:name=".ui.activities.mainpage.MessageActivity"/>
+        <activity
+            android:name=".ui.activities.mainpage.MessageActivity"
+            android:launchMode="singleTop"
+            />
         <activity android:name=".ui.activities.login.LoginActivity"/>
         <activity android:name=".ui.activities.konnekt.Konnekt"/>
         <activity android:name=".ui.activities.Settings"/>

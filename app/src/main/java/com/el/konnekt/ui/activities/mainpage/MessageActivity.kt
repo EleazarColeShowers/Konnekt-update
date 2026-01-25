@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -53,6 +54,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -168,6 +170,9 @@ fun MessagePage() {
         )
     )
 
+    val cachedFriends by viewModel.cachedFriends.collectAsState()
+    val isLoadingFriends by viewModel.isLoadingFriends.collectAsState()
+
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
@@ -176,10 +181,23 @@ fun MessagePage() {
     }
 
     LaunchedEffect(userId) {
-        viewModel.loadFriendsWithDetails(userId) { friends ->
+        if (cachedFriends.isNotEmpty()) {
             friendList.clear()
-            friendList.addAll(friends)
-            isLoading = false  // ADD THIS: Mark loading as complete
+            friendList.addAll(cachedFriends)
+            isLoading = false
+        } else {
+            viewModel.loadFriendsWithDetails(userId, forceRefresh = false) { friends ->
+                friendList.clear()
+                friendList.addAll(friends)
+                isLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(cachedFriends) {
+        if (cachedFriends.isNotEmpty()) {
+            friendList.clear()
+            friendList.addAll(cachedFriends)
         }
     }
 
@@ -374,12 +392,8 @@ fun CreateGroupBottomSheet(
     var groupName by remember { mutableStateOf("") }
     val selectedFriends = remember { mutableStateListOf<String>() }
     var groupImageUri by remember { mutableStateOf<Uri?>(null) }
-    val db = Room.databaseBuilder(
-        context.applicationContext,
-        AppDatabase::class.java,
-        "instachat_db"
-    ).build()
-    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+
+    val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         groupImageUri = uri
@@ -599,94 +613,27 @@ fun CreateGroupBottomSheet(
 
                 Button(
                     onClick = {
-                        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
-
                         if (selectedFriends.size < 2) {
                             Toast.makeText(context, "Select at least two members", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
 
-                        if (groupName.isNotBlank() && currentUserId != null) {
-                            val groupId = "group_${UUID.randomUUID()}"
-                            val members = selectedFriends.toMutableList().apply {
-                                if (!contains(currentUserId)) add(currentUserId)
-                            }
-
-                            if (groupImageUri != null) {
-                                val storageRef = FirebaseStorage.getInstance().reference
-                                    .child("group_images/$groupId/profile_image.jpg")
-
-                                storageRef.putFile(groupImageUri!!)
-                                    .addOnSuccessListener {
-                                        storageRef.downloadUrl.addOnSuccessListener { downloadUrl ->
-                                            val groupData = mapOf(
-                                                "groupName" to groupName,
-                                                "members" to members.associateWith { true },
-                                                "groupImage" to downloadUrl.toString(),
-                                                "adminId" to currentUserId
-                                            )
-
-                                            FirebaseDatabase.getInstance().getReference("chats")
-                                                .child(groupId)
-                                                .setValue(groupData)
-                                                .addOnSuccessListener {
-                                                    val groupEntity = GroupEntity(
-                                                        groupId = groupId,
-                                                        userId = currentUserId,
-                                                        groupName = groupName,
-                                                        groupImageUri = downloadUrl.toString(),
-                                                        memberIds = members.joinToString(",")
-                                                    )
-                                                    CoroutineScope(Dispatchers.IO).launch {
-                                                        db.groupDao().insertGroup(groupEntity)
-                                                    }
-
-                                                    viewModel.loadGroupChats(currentUserId)
-                                                    Toast.makeText(context, "Group created with image", Toast.LENGTH_SHORT).show()
-                                                }
-                                                .addOnFailureListener {
-                                                    Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
-                                                }
-                                        }
-                                    }
-                                    .addOnFailureListener {
-                                        Toast.makeText(context, "Image upload failed", Toast.LENGTH_SHORT).show()
-                                    }
-                            } else {
-                                val groupData = mapOf(
-                                    "groupName" to groupName,
-                                    "members" to members.associateWith { true },
-                                    "groupImage" to "",
-                                    "adminId" to currentUserId
-                                )
-
-                                FirebaseDatabase.getInstance().getReference("chats")
-                                    .child(groupId)
-                                    .setValue(groupData)
-                                    .addOnSuccessListener {
-                                        val groupEntity = GroupEntity(
-                                            groupId = groupId,
-                                            userId = currentUserId,
-                                            groupName = groupName,
-                                            groupImageUri = "",
-                                            memberIds = members.joinToString(",")
-                                        )
-
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            db.groupDao().insertGroup(groupEntity)
-                                        }
-
-                                        viewModel.loadGroupChats(currentUserId)
-                                        Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
-                                    }
-                                    .addOnFailureListener {
-                                        Toast.makeText(context, "Group creation failed", Toast.LENGTH_SHORT).show()
-                                    }
-                            }
+                        if (groupName.isNotBlank()) {
+                            viewModel.createGroup(
+                                groupName = groupName,
+                                selectedFriends = selectedFriends.toList(),
+                                groupImageUri = groupImageUri,
+                                onSuccess = {
+                                    Toast.makeText(context, "Group created", Toast.LENGTH_SHORT).show()
+                                    scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
+                                },
+                                onError = { error ->
+                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                                }
+                            )
                         } else {
                             Toast.makeText(context, "Enter group name", Toast.LENGTH_SHORT).show()
                         }
-                        scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
@@ -714,7 +661,6 @@ fun User(
     val requestCount = fetchReceivedRequestsCount(userId).value
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Header with profile and settings
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -947,14 +893,18 @@ fun MessageFrag(username: String){
 @Composable
 fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
     val context = LocalContext.current
-    val sortedFriendList by remember { mutableStateOf(friendList) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val combinedList by viewModel.combinedChatList.collectAsState()
+    val chatTimestamps by viewModel.chatTimestamps.collectAsState()
 
-    LaunchedEffect(searchQuery, friendList, viewModel.groupChats) {
+
+
+    LaunchedEffect(searchQuery, friendList, viewModel.groupChats, combinedList.size,chatTimestamps) {
         viewModel.refreshCombinedChatList(currentUserId, friendList, searchQuery, context, viewModel.groupChats.value)
     }
 
@@ -1021,7 +971,7 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     }
     if (showDialog && friendToRemove != null) {
         val usernameToRemove = friendToRemove?.let { friend ->
-            sortedFriendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
+            friendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
         }
         AlertDialog(
             onDismissRequest = { showDialog = false },
@@ -1032,7 +982,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     onClick = {
                         friendToRemove?.let { friend ->
                             viewModel.removeFriendFromDatabase(currentUserId, friend.friendId)
-//                            sortedFriendList = sortedFriendList.filterNot { it.first.friendId == friend.friendId }
 
                             Toast.makeText(
                                 context,
@@ -1134,9 +1083,12 @@ fun FriendRow(
 
                 if (messages.isNotEmpty()) {
                     val lastMsg = messages.last()
-                    // FIXED: Use chatId (not with "group_" prefix)
                     lastMessage = MessageObfuscator.deobfuscate(lastMsg.text, chatId)
-                    timestamp = lastMsg.timestamp
+                    val newTimestamp = lastMsg.timestamp
+                    timestamp = newTimestamp
+
+                    viewModel.updateChatTimestamp(chatId, newTimestamp)
+
                 } else {
                     lastMessage = "Send Hi to your new friend!"
                     timestamp = null
@@ -1327,10 +1279,10 @@ fun GroupAsFriendRow(
                     val text = MessageObfuscator.deobfuscate(latestMessage.text, group.groupId)
 //                    val text = MessageObfuscator.deobfuscate(latestMessage.text, "group_${group.groupId}")
                     lastMessage = "$senderName: $text"
-                    timestamp = latestMessage.timestamp
+                    val newTimestamp = latestMessage.timestamp
+                    timestamp = newTimestamp
+                    viewModel.updateChatTimestamp("group_${group.groupId}", newTimestamp)
 
-                    // FIXED: Count unread messages in group
-                    // For group chats, count messages where sender is NOT current user and not seen
                     val unreadMessages = messages.filter {
                         it.senderId != currentUserId && !it.seen
                     }

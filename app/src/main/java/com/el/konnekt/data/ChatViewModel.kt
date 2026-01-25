@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
@@ -21,19 +22,27 @@ import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.data.repository.FriendRepository
 import com.el.konnekt.data.repository.GroupRepository
 import com.el.konnekt.data.repository.MessageRepository
+import com.el.konnekt.ui.activities.KonnektApp.Companion.database
 import com.el.konnekt.ui.activities.mainpage.ChatItem
 import com.google.firebase.Firebase
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.database
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlin.collections.find
 import kotlin.collections.map
+import java.util.UUID
+
 
 
 class ChatViewModel(
@@ -41,7 +50,9 @@ class ChatViewModel(
     private val repo: ChatRepository,
     private val messageRepository: MessageRepository,
     private val groupRepository: GroupRepository,
-    private val friendRepository: FriendRepository
+    private val friendRepository: FriendRepository,
+    private val database: AppDatabase
+
 ) : AndroidViewModel(application) {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -62,8 +73,22 @@ class ChatViewModel(
     private val _receivedRequestsCount = MutableStateFlow(0)
     val receivedRequestsCount: StateFlow<Int> = _receivedRequestsCount
 
-    // --------------------------
-    // utility: network check
+    private val _cachedFriends = MutableStateFlow<List<Pair<Friend, Map<String, String>>>>(emptyList())
+    val cachedFriends: StateFlow<List<Pair<Friend, Map<String, String>>>> = _cachedFriends.asStateFlow()
+
+    private var lastFriendsFetchTime = 0L
+    private var lastGroupsFetchTime = 0L
+    private val CACHE_VALIDITY = 5 * 60 * 1000
+
+    private val _isLoadingFriends = MutableStateFlow(false)
+    val isLoadingFriends: StateFlow<Boolean> = _isLoadingFriends.asStateFlow()
+
+    private val _chatTimestamps = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    val chatTimestamps: StateFlow<Map<String, Long>> = _chatTimestamps.asStateFlow()
+
+
+
     private fun isOnline(context: Context): Boolean {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -131,7 +156,8 @@ class ChatViewModel(
                 friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId)
                         "${currentUserId}_${friend.friendId}" else "${friend.friendId}_${currentUserId}"
-                    val timestamp = repo.fetchLastMessageTimestamp(chatId)
+//                    val timestamp = repo.fetchLastMessageTimestamp(chatId)
+                    val timestamp = _chatTimestamps.value[chatId] ?: repo.fetchLastMessageTimestamp(chatId)
 
                     repo.saveUserToLocal(
                         UserEntity(
@@ -169,7 +195,7 @@ class ChatViewModel(
             // groups
             val groupItems = if (online && groupChats.isNotEmpty()) {
                 groupChats.map {
-                    val timestamp = repo.fetchLastMessageTimestamp(it.groupId)
+                    val timestamp = _chatTimestamps.value[it.groupId] ?: repo.fetchLastMessageTimestamp(it.groupId)
                     repo.saveGroupEntities(
                         GroupEntity(
                             groupId = it.groupId,
@@ -209,14 +235,12 @@ class ChatViewModel(
         }
     }
 
-    // updateMessages - for manual updates
     fun updateMessages(chatId: String, newList: List<Message>) {
         viewModelScope.launch {
             _messages.value = newList.sortedByDescending { it.timestamp }
         }
     }
 
-    // observeMessages - listen to real-time updates from repository
     fun observeMessages(chatId: String, currentUserId: String) {
         viewModelScope.launch {
             messageRepository.observeMessages(chatId, currentUserId).collect { messageList ->
@@ -229,8 +253,6 @@ class ChatViewModel(
         repo.removeMessageListener(chatId)
     }
 
-    // --------------------------
-    // observeTyping
     fun observeTyping(chatId: String, receiverId: String) {
         repo.observeTyping(chatId, receiverId, onTypingChanged = { typing ->
             _isFriendTyping.value = typing
@@ -288,28 +310,24 @@ class ChatViewModel(
         }
     }
 
-    // Edit message
     fun editMessage(chatId: String, messageId: String, newText: String) {
         viewModelScope.launch {
             messageRepository.editMessage(chatId, messageId, newText)
         }
     }
 
-    // Delete message for self
     fun deleteMessageForSelf(chatId: String, messageId: String, userId: String) {
         viewModelScope.launch {
             messageRepository.deleteMessageForSelf(chatId, messageId, userId)
         }
     }
 
-    // Delete message for everyone
     fun deleteMessageForEveryone(chatId: String, messageId: String) {
         viewModelScope.launch {
             messageRepository.deleteMessageForEveryone(chatId, messageId)
         }
     }
 
-    // Mark messages as seen
     fun markMessagesAsSeen(chatId: String, currentUserId: String, isGroupChat: Boolean) {
         viewModelScope.launch {
             messageRepository.markMessagesAsSeen(chatId, currentUserId, isGroupChat)
@@ -358,22 +376,114 @@ class ChatViewModel(
 
     fun loadFriendsWithDetails(
         userId: String,
+        forceRefresh: Boolean = false,
         onFriendsLoaded: (List<Pair<Friend, Map<String, String>>>) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val currentTime = System.currentTimeMillis()
+
+                // Return cached data if valid and not forcing refresh
+                if (!forceRefresh &&
+                    _cachedFriends.value.isNotEmpty() &&
+                    (currentTime - lastFriendsFetchTime) < CACHE_VALIDITY) {
+                    Log.d("ChatViewModel", "Using cached friends data")
+                    withContext(Dispatchers.Main) {
+                        onFriendsLoaded(_cachedFriends.value)
+                    }
+                    return@launch
+                }
+
+                // Fetch fresh data
+                _isLoadingFriends.value = true
+                Log.d("ChatViewModel", "Fetching fresh friends data")
+
                 val friends = friendRepository.loadFriendsWithDetails(userId)
+
+                // Update cache
+                _cachedFriends.value = friends
+                lastFriendsFetchTime = currentTime
+
                 withContext(Dispatchers.Main) {
+                    _isLoadingFriends.value = false
                     onFriendsLoaded(friends)
                 }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to load friends: ${e.message}")
                 withContext(Dispatchers.Main) {
-                    onFriendsLoaded(emptyList())
+                    _isLoadingFriends.value = false
+                    // Return cached data if available, even if expired
+                    if (_cachedFriends.value.isNotEmpty()) {
+                        onFriendsLoaded(_cachedFriends.value)
+                    } else {
+                        onFriendsLoaded(emptyList())
+                    }
                 }
             }
         }
     }
+
+    // MODIFIED: Add caching logic for groups
+    fun loadGroupChats(userId: String, forceRefresh: Boolean = false) {
+        viewModelScope.launch {
+            try {
+                val currentTime = System.currentTimeMillis()
+
+                // Return cached data if valid and not forcing refresh
+                if (!forceRefresh &&
+                    _groupChats.value.isNotEmpty() &&
+                    (currentTime - lastGroupsFetchTime) < CACHE_VALIDITY) {
+                    Log.d("ChatViewModel", "Using cached group chats data")
+                    return@launch
+                }
+
+                Log.d("ChatViewModel", "Fetching fresh group chats data")
+
+                repo.loadGroupsForUser(userId).collect { groups ->
+                    val groupChats = groups.map {
+                        GroupChat(
+                            groupId = it.groupId,
+                            groupName = it.groupName,
+                            groupImage = it.groupImageUri ?: "",
+                            members = it.memberIds.split(",")
+                        )
+                    }
+                    _groupChats.value = groupChats
+                    lastGroupsFetchTime = currentTime
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Failed to load group chats: ${e.message}")
+            }
+        }
+    }
+
+    // ADD: Method to manually refresh data
+    fun refreshAllData(userId: String, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val friendsDeferred = async(Dispatchers.IO) {
+                loadFriendsWithDetails(userId, forceRefresh = true) { }
+            }
+            val groupsDeferred = async {
+                loadGroupChats(userId, forceRefresh = true)
+            }
+
+            friendsDeferred.await()
+            groupsDeferred.await()
+
+            withContext(Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
+    // ADD: Method to clear cache (useful for logout)
+    fun clearCache() {
+        _cachedFriends.value = emptyList()
+        _groupChats.value = emptyList()
+        lastFriendsFetchTime = 0L
+        lastGroupsFetchTime = 0L
+    }
+
 
     fun fetchGroupMembers(currentUserId: String, groupId: String) {
         viewModelScope.launch {
@@ -390,6 +500,96 @@ class ChatViewModel(
     override fun onCleared() {
         super.onCleared()
         repo.removeAllListeners()
+    }
+    fun updateChatTimestamp(chatId: String, timestamp: Long) {
+        val currentTimestamps = _chatTimestamps.value.toMutableMap()
+        currentTimestamps[chatId] = timestamp
+        _chatTimestamps.value = currentTimestamps // This creates a new map, triggering observers
+
+        Log.d("ChatViewModel", "Updated timestamp for $chatId: $timestamp")
+    }
+
+    fun createGroup(
+        groupName: String,
+        selectedFriends: List<String>,
+        groupImageUri: Uri?,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+            onError("User not authenticated")
+            return
+        }
+
+        val groupId = "group_${UUID.randomUUID()}"
+        val members = selectedFriends.toMutableList().apply {
+            if (!contains(currentUserId)) add(currentUserId)
+        }
+
+        viewModelScope.launch {
+            try {
+                if (groupImageUri != null) {
+                    // Upload image first
+                    val storageRef = FirebaseStorage.getInstance().reference
+                        .child("group_images/$groupId/profile_image.jpg")
+
+                    storageRef.putFile(groupImageUri).await()
+                    val downloadUrl = storageRef.downloadUrl.await()
+
+                    // Create group with image
+                    createGroupInFirebase(groupId, groupName, members, downloadUrl.toString(), currentUserId)
+                    saveGroupToLocalDb(groupId, groupName, members, downloadUrl.toString(), currentUserId)
+
+                } else {
+                    // Create group without image
+                    createGroupInFirebase(groupId, groupName, members, "", currentUserId)
+                    saveGroupToLocalDb(groupId, groupName, members, "", currentUserId)
+                }
+
+                loadGroupChats(currentUserId)
+                onSuccess()
+
+            } catch (e: Exception) {
+                onError("Failed to create group: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun createGroupInFirebase(
+        groupId: String,
+        groupName: String,
+        members: List<String>,
+        groupImageUrl: String,
+        adminId: String
+    ) {
+        val groupData = mapOf(
+            "groupName" to groupName,
+            "members" to members.associateWith { true },
+            "groupImage" to groupImageUrl,
+            "adminId" to adminId
+        )
+
+        FirebaseDatabase.getInstance().getReference("chats")
+            .child(groupId)
+            .setValue(groupData)
+            .await()
+    }
+
+    private suspend fun saveGroupToLocalDb(
+        groupId: String,
+        groupName: String,
+        members: List<String>,
+        groupImageUrl: String,
+        userId: String
+    ) = withContext(Dispatchers.IO) {
+        val groupEntity = GroupEntity(
+            groupId = groupId,
+            userId = userId,
+            groupName = groupName,
+            groupImageUri = groupImageUrl,
+            memberIds = members.joinToString(",")
+        )
+        database.groupDao().insertGroup(groupEntity)
     }
 }
 
@@ -409,6 +609,7 @@ class ChatViewModelFactory(
                 messageRepository,
                 groupRepository,
                 friendRepository,
+                database
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")

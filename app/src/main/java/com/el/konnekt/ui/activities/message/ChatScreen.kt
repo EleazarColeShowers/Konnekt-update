@@ -3,10 +3,8 @@ package com.el.konnekt.ui.activities.message
 import android.app.Application
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
@@ -66,7 +64,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.el.konnekt.R
 import com.el.konnekt.data.ChatViewModel
@@ -86,7 +83,6 @@ import com.google.firebase.database.database
 import kotlin.text.firstOrNull
 import kotlin.text.removePrefix
 import androidx.compose.material.icons.automirrored.filled.Reply
-import androidx.compose.material.icons.filled.ArrowBack
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
 
 
@@ -134,8 +130,7 @@ class ChatActivity : ComponentActivity() {
                         groupName = groupName,
                         groupImageUri = groupImageUri,
                         onBackPressed = {
-                            val intent= Intent(this, MessageActivity::class.java)
-                            startActivity(intent)
+                            finish()
                         }
                     )
                 }
