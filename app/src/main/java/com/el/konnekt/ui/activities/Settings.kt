@@ -34,6 +34,8 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.el.konnekt.R
+import com.el.konnekt.services.MyFirebaseMessagingService
+import kotlin.jvm.java
 
 
 class Settings : ComponentActivity() {
@@ -139,6 +141,8 @@ fun SettingsPage() {
         Button(
             onClick = {
                 auth.signOut()
+                context.stopService(Intent(context, MyFirebaseMessagingService::class.java))
+
                 val intent = Intent(context, LoginActivity::class.java)
                 context.startActivity(intent)
             },

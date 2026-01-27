@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -94,7 +95,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.room.Room
 import com.android.identity.util.UUID
 import com.el.konnekt.ui.activities.calls.CallActivity
 import com.el.konnekt.data.local.AppDatabase
@@ -102,12 +102,8 @@ import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.data.ChatViewModel
 import com.el.konnekt.data.ChatViewModelFactory
 import com.el.konnekt.data.remote.FirebaseDataSource
-import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.LocalDataSource
 import com.el.konnekt.data.models.Message
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlin.collections.filterNot
 import kotlin.collections.find
@@ -118,10 +114,12 @@ import com.el.konnekt.ui.activities.message.ChatActivity
 import com.el.konnekt.utils.MessageObfuscator
 import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
 import com.el.konnekt.utils.formatTimestamp
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             InstaChatComposeTheme {
                 Surface(
@@ -140,8 +138,6 @@ class MessageActivity: ComponentActivity() {
     }
 }
 
-// Replace the MessagePage composable with this optimized version:
-
 @SuppressLint("StateFlowValueCalledInComposition")
 @Composable
 fun MessagePage() {
@@ -155,10 +151,7 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
     val app = context.applicationContext as Application
-
-    // ADD THIS: Track loading state
     var isLoading by remember { mutableStateOf(true) }
-
 
     val viewModel: ChatViewModel = viewModel(
         factory = ChatViewModelFactory(
@@ -169,6 +162,39 @@ fun MessagePage() {
             )
         )
     )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            if (isGranted) {
+                Log.d("Notifications", "Permission granted")
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(userId) {
+        if (userId.isNotEmpty()) {
+            // Refresh and save FCM token
+            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val token = task.result
+                    FirebaseDatabase.getInstance().reference
+                        .child("users")
+                        .child(userId)
+                        .child("fcmToken")
+                        .setValue(token)
+                        .addOnSuccessListener {
+                            Log.d("MessageActivity", "FCM token saved for user")
+                        }
+                }
+            }
+        }
+    }
 
     val cachedFriends by viewModel.cachedFriends.collectAsState()
     val isLoadingFriends by viewModel.isLoadingFriends.collectAsState()
@@ -668,12 +694,10 @@ fun User(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Profile section with constrained width
             Row(
                 modifier = Modifier.weight(1f, fill = false),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Profile picture
                 if (!profilePicUrl.isNullOrEmpty()) {
                     AsyncImage(
                         model = profilePicUrl,
