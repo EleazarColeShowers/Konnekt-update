@@ -64,16 +64,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
+import com.el.konnekt.KonnektApplication
 import com.el.konnekt.R
 import com.el.konnekt.ui.activities.Settings
 import com.el.konnekt.data.ChatViewModel
 import com.el.konnekt.data.ChatViewModelFactory
+import com.el.konnekt.data.ForegroundFriendRequestListener
+import com.el.konnekt.data.ForegroundMessageListener
 import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.LocalDataSource
 import com.el.konnekt.data.remote.FirebaseDataSource
@@ -81,6 +85,7 @@ import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
 import com.el.konnekt.ui.activities.mainpage.ProfileActivity
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
+import com.el.konnekt.utils.ForegroundNotificationHandler
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
@@ -89,22 +94,69 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class Konnekt : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val database = FirebaseDatabase.getInstance().reference
-        val userRef = database.child("users").child(currentUserId)
 
-        userRef.child("username").get().addOnSuccessListener { snapshot ->
-            val currentUsername = snapshot.value as? String ?: "AnonymousUser"
-            loadUserUI(currentUsername)
-        }.addOnFailureListener { exception ->
-            Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
+        // Load username in background to prevent blocking
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val database = FirebaseDatabase.getInstance().reference
+                val userRef = database.child("users").child(currentUserId)
 
-            loadUserUI("AnonymousUser")
+                userRef.child("username").get().addOnSuccessListener { snapshot ->
+                    val currentUsername = snapshot.value as? String ?: "AnonymousUser"
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        loadUserUI(currentUsername)
+                    }
+                }.addOnFailureListener { exception ->
+                    Log.e("Konnekt", "Failed to fetch username for userId: $currentUserId", exception)
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        loadUserUI("AnonymousUser")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("Konnekt", "Error in onCreate", e)
+                lifecycleScope.launch(Dispatchers.Main) {
+                    loadUserUI("AnonymousUser")
+                }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        KonnektApplication.setCurrentChat(null)
+
+        // Start listeners in background
+        val userId = FirebaseAuth.getInstance().currentUser?.uid
+        if (userId != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    ForegroundMessageListener.startListening(this@Konnekt, userId)
+                    ForegroundFriendRequestListener.startListening(this@Konnekt, userId)
+                } catch (e: Exception) {
+                    Log.e("Konnekt", "Error starting listeners", e)
+                }
+            }
+        }
+
+        ForegroundNotificationHandler.cancelFriendRequestNotification(this)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) {
+            ForegroundMessageListener.stopListening()
+            val userId = FirebaseAuth.getInstance().currentUser?.uid
+            if (userId != null) {
+                ForegroundFriendRequestListener.stopListening(userId)
+            }
         }
     }
 
@@ -123,6 +175,7 @@ class Konnekt : ComponentActivity() {
         }
     }
 }
+
 @Composable
 fun AddFriendsPage() {
     val navController = rememberNavController()

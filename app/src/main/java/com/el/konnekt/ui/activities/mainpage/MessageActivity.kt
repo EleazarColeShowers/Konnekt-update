@@ -94,8 +94,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.identity.util.UUID
+import com.el.konnekt.KonnektApplication
 import com.el.konnekt.ui.activities.calls.CallActivity
 import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.repository.ChatRepository
@@ -108,13 +110,18 @@ import kotlinx.coroutines.launch
 import kotlin.collections.filterNot
 import kotlin.collections.find
 import com.el.konnekt.R
+import com.el.konnekt.data.ForegroundFriendRequestListener
+import com.el.konnekt.data.ForegroundMessageListener
 import com.el.konnekt.data.models.Friend
 import com.el.konnekt.data.models.GroupChat
 import com.el.konnekt.ui.activities.message.ChatActivity
+import com.el.konnekt.utils.ForegroundNotificationHandler
 import com.el.konnekt.utils.MessageObfuscator
 import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
 import com.el.konnekt.utils.formatTimestamp
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MessageActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -136,7 +143,37 @@ class MessageActivity: ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        KonnektApplication.setCurrentChat(null)
+
+        // Start listeners in background thread to avoid blocking UI
+        val userId = FirebaseAuth.getInstance().currentUser?.uid
+        if (userId != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    ForegroundMessageListener.startListening(this@MessageActivity, userId)
+                    ForegroundFriendRequestListener.startListening(this@MessageActivity, userId)
+                } catch (e: Exception) {
+                    Log.e("MessageActivity", "Error starting listeners", e)
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) {
+            ForegroundMessageListener.stopListening()
+            val userId = FirebaseAuth.getInstance().currentUser?.uid
+            if (userId != null) {
+                ForegroundFriendRequestListener.stopListening(userId)
+            }
+        }
+    }
 }
+
 
 @SuppressLint("StateFlowValueCalledInComposition")
 @Composable
@@ -152,6 +189,8 @@ fun MessagePage() {
     val context = LocalContext.current
     val app = context.applicationContext as Application
     var isLoading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
 
     val viewModel: ChatViewModel = viewModel(
         factory = ChatViewModelFactory(
@@ -177,45 +216,75 @@ fun MessagePage() {
         }
     }
 
+    // Load FCM token in background
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
-            // Refresh and save FCM token
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val token = task.result
-                    FirebaseDatabase.getInstance().reference
-                        .child("users")
-                        .child(userId)
-                        .child("fcmToken")
-                        .setValue(token)
-                        .addOnSuccessListener {
-                            Log.d("MessageActivity", "FCM token saved for user")
+            scope.launch(Dispatchers.IO) {
+                try {
+                    FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            val token = task.result
+                            FirebaseDatabase.getInstance().reference
+                                .child("users")
+                                .child(userId)
+                                .child("fcmToken")
+                                .setValue(token)
+                                .addOnSuccessListener {
+                                    Log.d("MessageActivity", "FCM token saved")
+                                }
+                                .addOnFailureListener { e ->
+                                    Log.e("MessageActivity", "Failed to save FCM token", e)
+                                }
                         }
+                    }
+                } catch (e: Exception) {
+                    Log.e("MessageActivity", "Error getting FCM token", e)
                 }
             }
         }
     }
 
     val cachedFriends by viewModel.cachedFriends.collectAsState()
-    val isLoadingFriends by viewModel.isLoadingFriends.collectAsState()
 
+    // Load user profile in background
     LaunchedEffect(userId) {
-        viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
-            username = fetchedUsername ?: "Unknown"
-            profilePicUrl = fetchedProfilePicUrl
+        if (userId.isNotEmpty()) {
+            scope.launch(Dispatchers.IO) {
+                viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
+                    username = fetchedUsername ?: "Unknown"
+                    profilePicUrl = fetchedProfilePicUrl
+                }
+            }
         }
     }
 
+    // Load friends with improved error handling
     LaunchedEffect(userId) {
-        if (cachedFriends.isNotEmpty()) {
-            friendList.clear()
-            friendList.addAll(cachedFriends)
+        if (userId.isEmpty()) {
             isLoading = false
-        } else {
-            viewModel.loadFriendsWithDetails(userId, forceRefresh = false) { friends ->
-                friendList.clear()
-                friendList.addAll(friends)
-                isLoading = false
+            return@LaunchedEffect
+        }
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                if (cachedFriends.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        friendList.clear()
+                        friendList.addAll(cachedFriends)
+                        isLoading = false
+                    }
+                } else {
+                    viewModel.loadFriendsWithDetails(userId, forceRefresh = false) { friends ->
+                        friendList.clear()
+                        friendList.addAll(friends)
+                        isLoading = false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MessagePage", "Error loading friends", e)
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
             }
         }
     }
@@ -227,22 +296,90 @@ fun MessagePage() {
         }
     }
 
+    // Load groups in background
     LaunchedEffect(userId) {
-        viewModel.loadGroupChats(userId)
+        if (userId.isNotEmpty()) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    viewModel.loadGroupChats(userId)
+                } catch (e: Exception) {
+                    Log.e("MessagePage", "Error loading groups", e)
+                }
+            }
+        }
     }
+
+//    DisposableEffect(userId) {
+//        val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
+//
+//        val listener = object : ValueEventListener {
+//            override fun onDataChange(snapshot: DataSnapshot) {
+//                val userGroups = mutableListOf<GroupChat>()
+//
+//                for (groupSnapshot in snapshot.children) {
+//                    val groupId = groupSnapshot.key ?: continue
+//                    if (!groupId.startsWith("group_")) continue
+//
+//                    val membersSnapshot = groupSnapshot.child("members")
+//                    val memberIds = membersSnapshot.children.mapNotNull { it.key }
+//
+//                    if (userId in memberIds) {
+//                        val groupName = groupSnapshot.child("groupName")
+//                            .getValue(String::class.java) ?: "Unnamed Group"
+//                        val groupImage = groupSnapshot.child("groupImage")
+//                            .getValue(String::class.java) ?: ""
+//
+//                        userGroups.add(
+//                            GroupChat(
+//                                groupId = groupId.removePrefix("group_"),
+//                                groupName = groupName,
+//                                members = memberIds,
+//                                groupImage = groupImage
+//                            )
+//                        )
+//                    }
+//                }
+//
+//                viewModel.updateGroupChats(userGroups)
+//                viewModel.refreshCombinedChatList(
+//                    userId,
+//                    friendList,
+//                    searchQuery,
+//                    context,
+//                    userGroups
+//                )
+//            }
+//
+//            override fun onCancelled(error: DatabaseError) {
+//                Log.e("MessagePage", "Failed to sync groups: ${error.message}")
+//            }
+//        }
+//
+//        groupsRef.addValueEventListener(listener)
+//        onDispose {
+//            groupsRef.removeEventListener(listener)
+//        }
+//    }
 
     DisposableEffect(userId) {
         val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
+        var listener: ValueEventListener? = null
 
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val userGroups = mutableListOf<GroupChat>()
+        try {
+            listener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    // Process in background with size limit
+                    scope.launch(Dispatchers.IO) {
+                        val userGroups = ArrayList<GroupChat>(50) // Pre-allocate with max size
 
-                for (groupSnapshot in snapshot.children) {
-                    val groupId = groupSnapshot.key ?: continue
-                    if (!groupId.startsWith("group_")) continue
+                        var count = 0
+                        for (groupSnapshot in snapshot.children) {
+                            if (count++ > 100) break // Limit to prevent memory issues
 
-                    val membersSnapshot = groupSnapshot.child("members")
+                            val groupId = groupSnapshot.key ?: continue
+                            if (!groupId.startsWith("group_")) continue
+
+                            val membersSnapshot = groupSnapshot.child("members")
                     val memberIds = membersSnapshot.children.mapNotNull { it.key }
 
                     if (userId in memberIds) {
@@ -262,24 +399,29 @@ fun MessagePage() {
                     }
                 }
 
-                viewModel.updateGroupChats(userGroups)
-                viewModel.refreshCombinedChatList(
-                    userId,
-                    friendList,
-                    searchQuery,
-                    context,
-                    userGroups
-                )
+                        withContext(Dispatchers.Main) {
+                            viewModel.updateGroupChats(userGroups)
+                        }
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("MessagePage", "Groups sync cancelled: ${error.message}")
+                }
             }
 
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("MessagePage", "Failed to sync groups: ${error.message}")
-            }
+            groupsRef.addValueEventListener(listener)
+        } catch (e: Exception) {
+            Log.e("MessagePage", "Error setting up listener", e)
         }
 
-        groupsRef.addValueEventListener(listener)
         onDispose {
-            groupsRef.removeEventListener(listener)
+            try {
+                listener?.let { groupsRef.removeEventListener(it) }
+                listener = null
+            } catch (e: Exception) {
+                Log.e("MessagePage", "Error removing listener", e)
+            }
         }
     }
 
@@ -908,10 +1050,7 @@ fun MessageFrag(username: String){
 
 
     }
-
 }
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1074,7 +1213,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     }
 }
 
-
 @Composable
 fun FriendRow(
     friend: Friend,
@@ -1093,44 +1231,16 @@ fun FriendRow(
         "${friend.friendId}_${currentUserId}"
     }
 
-    var lastMessage by remember { mutableStateOf("Send Hi to your new friend!") }
-    var hasUnreadMessages by remember { mutableStateOf(false) }
-    var timestamp by remember { mutableStateOf<Long?>(null) }
-    var unreadCount by remember { mutableIntStateOf(0) }
+    // ❌ BAD: Creates a listener for EVERY friend
+    // DisposableEffect(chatId) { ... }
 
-    DisposableEffect(chatId) {
-        val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
+    // ✅ GOOD: Get data from ViewModel's centralized listener
+    val chatState by viewModel.getChatState(chatId).collectAsState()
 
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
-
-                if (messages.isNotEmpty()) {
-                    val lastMsg = messages.last()
-                    lastMessage = MessageObfuscator.deobfuscate(lastMsg.text, chatId)
-                    val newTimestamp = lastMsg.timestamp
-                    timestamp = newTimestamp
-
-                    viewModel.updateChatTimestamp(chatId, newTimestamp)
-
-                } else {
-                    lastMessage = "Send Hi to your new friend!"
-                    timestamp = null
-                }
-
-                val unreadMessages = messages.filter { it.receiverId == currentUserId && !it.seen }
-                hasUnreadMessages = unreadMessages.isNotEmpty()
-                unreadCount = unreadMessages.size
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")
-            }
-        }
-
-        db.addValueEventListener(listener)
-        onDispose { db.removeEventListener(listener) }
-    }
+    val lastMessage = chatState.lastMessage ?: "Send Hi to your new friend!"
+    val hasUnreadMessages = chatState.unreadCount > 0
+    val unreadCount = chatState.unreadCount
+    val timestamp = chatState.timestamp
 
     Row(
         modifier = Modifier
@@ -1150,7 +1260,7 @@ fun FriendRow(
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Profile image
+        // Profile image with proper sizing
         if (friendProfileUri.isNotEmpty()) {
             AsyncImage(
                 model = friendProfileUri,
@@ -1158,7 +1268,10 @@ fun FriendRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                // Add these for memory efficiency
+//                memoryCacheKey = "profile_$friendProfileUri",
+//                diskCacheKey = "profile_$friendProfileUri"
             )
         } else {
             Box(
@@ -1179,10 +1292,7 @@ fun FriendRow(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // Message content
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1200,7 +1310,6 @@ fun FriendRow(
                     modifier = Modifier.weight(1f, fill = false)
                 )
 
-                // Timestamp
                 timestamp?.let {
                     Text(
                         text = formatTimestamp(it),
@@ -1217,9 +1326,7 @@ fun FriendRow(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = lastMessage,
                     style = TextStyle(
@@ -1238,7 +1345,6 @@ fun FriendRow(
                 if (hasUnreadMessages) {
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Show count badge if more than 1 message
                     if (unreadCount > 1) {
                         Surface(
                             modifier = Modifier.size(20.dp),
@@ -1258,7 +1364,6 @@ fun FriendRow(
                             }
                         }
                     } else {
-                        // Single unread - show dot
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
@@ -1267,11 +1372,207 @@ fun FriendRow(
                         )
                     }
                 }
-
             }
         }
     }
 }
+//@Composable
+//fun FriendRow(
+//    friend: Friend,
+//    details: Map<String, String>,
+//    navController: NavController,
+//    currentUserId: String,
+//    viewModel: ChatViewModel
+//) {
+//    val context = LocalContext.current
+//    val friendUsername = details["username"] ?: "Unknown"
+//    val friendProfileUri = details["profileImageUri"] ?: ""
+//
+//    val chatId = if (currentUserId < friend.friendId) {
+//        "${currentUserId}_${friend.friendId}"
+//    } else {
+//        "${friend.friendId}_${currentUserId}"
+//    }
+//
+//    var lastMessage by remember { mutableStateOf("Send Hi to your new friend!") }
+//    var hasUnreadMessages by remember { mutableStateOf(false) }
+//    var timestamp by remember { mutableStateOf<Long?>(null) }
+//    var unreadCount by remember { mutableIntStateOf(0) }
+//
+//    DisposableEffect(chatId) {
+//        val db = Firebase.database.reference.child("chats").child(chatId).child("messages")
+//
+//        val listener = object : ValueEventListener {
+//            override fun onDataChange(snapshot: DataSnapshot) {
+//                val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
+//
+//                if (messages.isNotEmpty()) {
+//                    val lastMsg = messages.last()
+//                    lastMessage = MessageObfuscator.deobfuscate(lastMsg.text, chatId)
+//                    val newTimestamp = lastMsg.timestamp
+//                    timestamp = newTimestamp
+//
+//                    viewModel.updateChatTimestamp(chatId, newTimestamp)
+//
+//                } else {
+//                    lastMessage = "Send Hi to your new friend!"
+//                    timestamp = null
+//                }
+//
+//                val unreadMessages = messages.filter { it.receiverId == currentUserId && !it.seen }
+//                hasUnreadMessages = unreadMessages.isNotEmpty()
+//                unreadCount = unreadMessages.size
+//            }
+//
+//            override fun onCancelled(error: DatabaseError) {
+//                Log.e("FriendsListScreen", "Error fetching messages: ${error.message}")
+//            }
+//        }
+//
+//        db.addValueEventListener(listener)
+//        onDispose { db.removeEventListener(listener) }
+//    }
+//
+//    Row(
+//        modifier = Modifier
+//            .fillMaxWidth()
+//            .clip(RoundedCornerShape(12.dp))
+//            .clickable {
+//                val intent = Intent(context, ChatActivity::class.java).apply {
+//                    putExtra("friendId", friend.friendId)
+//                    putExtra("username", friendUsername)
+//                    putExtra("profileImageUri", friendProfileUri)
+//                    putExtra("chatId", chatId)
+//                    putExtra("currentUserId", currentUserId)
+//                    putExtra("isGroupChat", false)
+//                }
+//                context.startActivity(intent)
+//            }
+//            .padding(horizontal = 4.dp, vertical = 8.dp),
+//        verticalAlignment = Alignment.CenterVertically
+//    ) {
+//        // Profile image
+//        if (friendProfileUri.isNotEmpty()) {
+//            AsyncImage(
+//                model = friendProfileUri,
+//                contentDescription = "Profile Image",
+//                modifier = Modifier
+//                    .size(52.dp)
+//                    .clip(CircleShape),
+//                contentScale = ContentScale.Crop
+//            )
+//        } else {
+//            Box(
+//                modifier = Modifier
+//                    .size(52.dp)
+//                    .clip(CircleShape)
+//                    .background(MaterialTheme.colorScheme.surfaceVariant),
+//                contentAlignment = Alignment.Center
+//            ) {
+//                Text(
+//                    text = friendUsername.firstOrNull()?.uppercase() ?: "?",
+//                    fontSize = 20.sp,
+//                    fontWeight = FontWeight.SemiBold,
+//                    color = MaterialTheme.colorScheme.onSurfaceVariant
+//                )
+//            }
+//        }
+//
+//        Spacer(modifier = Modifier.width(12.dp))
+//
+//        // Message content
+//        Column(
+//            modifier = Modifier.weight(1f)
+//        ) {
+//            Row(
+//                modifier = Modifier.fillMaxWidth(),
+//                horizontalArrangement = Arrangement.SpaceBetween,
+//                verticalAlignment = Alignment.CenterVertically
+//            ) {
+//                Text(
+//                    text = friendUsername,
+//                    style = TextStyle(
+//                        fontSize = 16.sp,
+//                        fontWeight = FontWeight.SemiBold,
+//                        color = MaterialTheme.colorScheme.onBackground
+//                    ),
+//                    maxLines = 1,
+//                    overflow = TextOverflow.Ellipsis,
+//                    modifier = Modifier.weight(1f, fill = false)
+//                )
+//
+//                // Timestamp
+//                timestamp?.let {
+//                    Text(
+//                        text = formatTimestamp(it),
+//                        style = TextStyle(
+//                            fontSize = 12.sp,
+//                            color = if (hasUnreadMessages)
+//                                Color(0xFF2F9ECE)
+//                            else
+//                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+//                        )
+//                    )
+//                }
+//            }
+//
+//            Spacer(modifier = Modifier.height(4.dp))
+//
+//            Row(
+//                verticalAlignment = Alignment.CenterVertically
+//            ) {
+//                Text(
+//                    text = lastMessage,
+//                    style = TextStyle(
+//                        fontSize = 14.sp,
+//                        fontWeight = if (hasUnreadMessages) FontWeight.Medium else FontWeight.Normal,
+//                        color = if (hasUnreadMessages)
+//                            MaterialTheme.colorScheme.onBackground
+//                        else
+//                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+//                    ),
+//                    maxLines = 1,
+//                    overflow = TextOverflow.Ellipsis,
+//                    modifier = Modifier.weight(1f)
+//                )
+//
+//                if (hasUnreadMessages) {
+//                    Spacer(modifier = Modifier.width(8.dp))
+//
+//                    // Show count badge if more than 1 message
+//                    if (unreadCount > 1) {
+//                        Surface(
+//                            modifier = Modifier.size(20.dp),
+//                            shape = CircleShape,
+//                            color = Color(0xFF2F9ECE)
+//                        ) {
+//                            Box(
+//                                contentAlignment = Alignment.Center,
+//                                modifier = Modifier.fillMaxSize()
+//                            ) {
+//                                Text(
+//                                    text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+//                                    color = Color.White,
+//                                    fontSize = 10.sp,
+//                                    fontWeight = FontWeight.Bold
+//                                )
+//                            }
+//                        }
+//                    } else {
+//                        // Single unread - show dot
+//                        Box(
+//                            modifier = Modifier
+//                                .size(8.dp)
+//                                .clip(CircleShape)
+//                                .background(Color(0xFF2F9ECE))
+//                        )
+//                    }
+//                }
+//
+//            }
+//        }
+//    }
+//}
 
 
 @Composable

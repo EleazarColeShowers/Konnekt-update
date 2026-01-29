@@ -83,7 +83,9 @@ import com.google.firebase.database.database
 import kotlin.text.firstOrNull
 import kotlin.text.removePrefix
 import androidx.compose.material.icons.automirrored.filled.Reply
+import com.el.konnekt.KonnektApplication
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
+import com.el.konnekt.utils.ForegroundNotificationHandler
 
 
 class ChatActivity : ComponentActivity() {
@@ -137,6 +139,27 @@ class ChatActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Set current chat so we don't get notifications for this chat
+        val chatId = intent.getStringExtra("chatId")
+        if (chatId != null) {
+            KonnektApplication.setCurrentChat(chatId)
+
+            // Cancel any existing notifications for this chat
+            ForegroundNotificationHandler.cancelMessageNotification(this, chatId)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+
+        // Clear current chat when leaving
+        KonnektApplication.setCurrentChat(null)
+    }
+
 }
 
 @Composable

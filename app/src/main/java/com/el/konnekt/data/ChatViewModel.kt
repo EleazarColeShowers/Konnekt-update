@@ -15,6 +15,7 @@ import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.FriendEntity
 import com.el.konnekt.data.local.GroupEntity
 import com.el.konnekt.data.local.UserEntity
+import com.el.konnekt.data.models.ChatState
 import com.el.konnekt.data.models.Friend
 import com.el.konnekt.data.models.GroupChat
 import com.el.konnekt.data.models.Message
@@ -24,9 +25,13 @@ import com.el.konnekt.data.repository.GroupRepository
 import com.el.konnekt.data.repository.MessageRepository
 import com.el.konnekt.ui.activities.KonnektApp.Companion.database
 import com.el.konnekt.ui.activities.mainpage.ChatItem
+import com.el.konnekt.utils.MessageObfuscator
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,13 +86,70 @@ class ChatViewModel(
     private val CACHE_VALIDITY = 5 * 60 * 1000
 
     private val _isLoadingFriends = MutableStateFlow(false)
-    val isLoadingFriends: StateFlow<Boolean> = _isLoadingFriends.asStateFlow()
-
+    private val currentUserId: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     private val _chatTimestamps = MutableStateFlow<Map<String, Long>>(emptyMap())
 
     val chatTimestamps: StateFlow<Map<String, Long>> = _chatTimestamps.asStateFlow()
+    private val _chatStates = mutableMapOf<String, MutableStateFlow<ChatState>>()
+    private val chatListeners = mutableMapOf<String, ValueEventListener>()
 
+    fun getChatState(chatId: String): StateFlow<ChatState> {
+        return _chatStates.getOrPut(chatId) {
+            MutableStateFlow(ChatState()).also {
+                startListeningToChat(chatId)
+            }
+        }
+    }
 
+    private fun startListeningToChat(chatId: String) {
+        if (chatListeners.containsKey(chatId)) return
+
+        val db = FirebaseDatabase.getInstance().reference
+            .child("chats")
+            .child(chatId)
+            .child("messages")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        val messages = snapshot.children.mapNotNull {
+                            it.getValue(Message::class.java)
+                        }
+
+                        if (messages.isNotEmpty()) {
+                            val lastMsg = messages.last()
+                            val deobfuscatedText = MessageObfuscator.deobfuscate(
+                                lastMsg.text,
+                                chatId
+                            )
+
+                            val unreadMessages = messages.count {
+                                it.receiverId == currentUserId && !it.seen
+                            }
+
+                            _chatStates[chatId]?.value = ChatState(
+                                lastMessage = deobfuscatedText,
+                                timestamp = lastMsg.timestamp,
+                                unreadCount = unreadMessages,
+                                hasUnreadMessages = unreadMessages > 0
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatViewModel", "Error processing chat $chatId", e)
+                    }
+                }
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatViewModel", "Chat listener cancelled: ${error.message}")
+            }
+        }
+
+        chatListeners[chatId] = listener
+        db.addValueEventListener(listener)
+    }
 
     private fun isOnline(context: Context): Boolean {
         return try {
@@ -139,8 +201,6 @@ class ChatViewModel(
         }
     }
 
-    // --------------------------
-    // refreshCombinedChatList (delegates to repo/local fetching)
     fun refreshCombinedChatList(
         currentUserId: String,
         friendList: List<Pair<Friend, Map<String, String>>>,
@@ -151,7 +211,6 @@ class ChatViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val online = isOnline(context)
 
-            // friends
             val friendItems = if (online && friendList.isNotEmpty()) {
                 friendList.map { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId)
@@ -500,6 +559,20 @@ class ChatViewModel(
     override fun onCleared() {
         super.onCleared()
         repo.removeAllListeners()
+
+        chatListeners.forEach { (chatId, listener) ->
+            try {
+                FirebaseDatabase.getInstance().reference
+                    .child("chats")
+                    .child(chatId)
+                    .child("messages")
+                    .removeEventListener(listener)
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error removing listener", e)
+            }
+        }
+        chatListeners.clear()
+        _chatStates.clear()
     }
     fun updateChatTimestamp(chatId: String, timestamp: Long) {
         val currentTimestamps = _chatTimestamps.value.toMutableMap()
