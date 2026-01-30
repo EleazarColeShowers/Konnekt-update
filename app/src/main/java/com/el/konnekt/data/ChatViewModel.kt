@@ -48,8 +48,6 @@ import kotlin.collections.find
 import kotlin.collections.map
 import java.util.UUID
 
-
-
 class ChatViewModel(
     application: Application,
     private val repo: ChatRepository,
@@ -120,9 +118,15 @@ class ChatViewModel(
 
                         if (messages.isNotEmpty()) {
                             val lastMsg = messages.last()
+                            val decryptionKey = if (chatId.startsWith("group_")) {
+                                chatId.removePrefix("group_")  // "group_abc123" → "abc123"
+                            } else {
+                                chatId
+                            }
+
                             val deobfuscatedText = MessageObfuscator.deobfuscate(
                                 lastMsg.text,
-                                chatId
+                                decryptionKey
                             )
 
                             val unreadMessages = messages.count {

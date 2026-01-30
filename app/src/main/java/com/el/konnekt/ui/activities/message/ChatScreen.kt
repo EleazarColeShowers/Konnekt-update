@@ -755,7 +755,7 @@ fun MessageBubble(
                 message.replyTo?.let { replyId ->
                     val repliedMessage = messages.find { it.id == replyId }
                     val repliedText = repliedMessage?.let {
-                        MessageObfuscator.deobfuscate(it.text, chatId)
+                        MessageObfuscator.deobfuscate(it.text, encryptionKey)
                     } ?: "[message unavailable]"
 
                     Surface(

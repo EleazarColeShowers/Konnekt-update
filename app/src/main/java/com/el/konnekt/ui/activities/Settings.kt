@@ -31,11 +31,13 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.userProfileChangeRequest
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.el.konnekt.R
 import com.el.konnekt.services.MyFirebaseMessagingService
-import kotlin.jvm.java
 
 
 class Settings : ComponentActivity() {
@@ -71,19 +73,36 @@ fun SettingsPage() {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showBioDialog by remember { mutableStateOf(false) }
 
-
     val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             selectedImageUri = uri
-            uploadImageToFirebase(uri, user, database, storageReference)
+            uploadImageToFirebase(uri, user, database, storageReference) { downloadUrl ->
+                // Update state after upload
+                if (downloadUrl != null) {
+                    profileImageUri = downloadUrl
+                }
+            }
         }
     }
 
-    LaunchedEffect(Unit) {
-        database.get().addOnSuccessListener { snapshot ->
-            username = snapshot.child("username").value as? String ?: "User"
-            bio = snapshot.child("bio").value as? String ?: "No bio yet"
-            profileImageUri = snapshot.child("profileImageUri").value as? String
+    // Real-time database listener with proper cleanup
+    DisposableEffect(Unit) {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                username = snapshot.child("username").value as? String ?: "User"
+                bio = snapshot.child("bio").value as? String ?: "No bio yet"
+                profileImageUri = snapshot.child("profileImageUri").value as? String
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("SettingsPage", "Database error: ${error.message}")
+            }
+        }
+
+        database.addValueEventListener(listener)
+
+        onDispose {
+            database.removeEventListener(listener)
         }
     }
 
@@ -98,7 +117,7 @@ fun SettingsPage() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = profileImageUri ?: R.drawable.nopfp, // Use a default image
+                model = profileImageUri ?: R.drawable.nopfp,
                 contentDescription = "Profile Picture",
                 modifier = Modifier
                     .size(70.dp)
@@ -121,21 +140,11 @@ fun SettingsPage() {
         SettingOption("Change Username") { showDialog = true }
         SettingOption("Change Bio") { showBioDialog = true }
         SettingOption("Change Profile Picture") { pickImageLauncher.launch("image/*") }
-        SettingOption("Privacy Settings") { }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Save Settings Button
-        Button(
-            onClick = { /* Save logic here */ },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F9ECE))
-        ) {
-            Text("Save Settings", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        SettingOption("Privacy Settings") {
+            android.widget.Toast.makeText(context, "Privacy settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.weight(1f))
 
         // Logout Button
         Button(
@@ -143,7 +152,9 @@ fun SettingsPage() {
                 auth.signOut()
                 context.stopService(Intent(context, MyFirebaseMessagingService::class.java))
 
-                val intent = Intent(context, LoginActivity::class.java)
+                val intent = Intent(context, LoginActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                }
                 context.startActivity(intent)
             },
             modifier = Modifier.fillMaxWidth(),
@@ -158,16 +169,31 @@ fun SettingsPage() {
         ChangeUsernameDialog(
             onDismiss = { showDialog = false },
             onConfirm = { newUsername ->
-                updateUsername(newUsername)
+                updateUsername(newUsername) { success ->
+                    if (success) {
+                        username = newUsername
+                        android.widget.Toast.makeText(context, "Username updated", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Failed to update username", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
                 showDialog = false
             }
         )
     }
+
     if (showBioDialog) {
         ChangeBioDialog(
             onDismiss = { showBioDialog = false },
             onConfirm = { newBio ->
-                updateBio(newBio)
+                updateBio(newBio) { success ->
+                    if (success) {
+                        bio = newBio
+                        android.widget.Toast.makeText(context, "Bio updated", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Failed to update bio", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
                 showBioDialog = false
             }
         )
@@ -208,12 +234,20 @@ fun ChangeUsernameDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 OutlinedTextField(
                     value = newUsername,
                     onValueChange = { newUsername = it },
-                    label = { Text("New Username") }
+                    label = { Text("New Username") },
+                    singleLine = true
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(newUsername) }) {
+            Button(
+                onClick = {
+                    if (newUsername.isNotBlank()) {
+                        onConfirm(newUsername)
+                    }
+                },
+                enabled = newUsername.isNotBlank()
+            ) {
                 Text("Confirm")
             }
         },
@@ -223,61 +257,6 @@ fun ChangeUsernameDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
             }
         }
     )
-}
-
-fun updateUsername(newUsername: String) {
-    val user = FirebaseAuth.getInstance().currentUser
-    val database = FirebaseDatabase.getInstance().reference
-
-    user?.let {
-        val profileUpdates = userProfileChangeRequest {
-            displayName = newUsername
-        }
-
-        user.updateProfile(profileUpdates)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    database.child("users").child(user.uid).child("username")
-                        .setValue(newUsername)
-                        .addOnSuccessListener {
-                            Log.d("UpdateUsername", "Username updated successfully ")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("UpdateUsername", "Error updating username", e)
-                        }
-                }
-            }
-    }
-}
-
-fun uploadImageToFirebase(
-    uri: Uri,
-    user: FirebaseUser?,
-    database: DatabaseReference,
-    storageReference: StorageReference
-) {
-    user?.uid?.let { uid ->
-        val profileImageRef = storageReference.child("profile_images/$uid/profile_image.jpg")
-
-        profileImageRef.putFile(uri)
-            .addOnSuccessListener {
-                profileImageRef.downloadUrl.addOnSuccessListener { downloadUri ->
-                    val imageUrl = downloadUri.toString()
-
-                    database.child("users").child(uid).child("profileImageUri")
-                        .setValue(imageUrl)
-                        .addOnSuccessListener {
-                            Log.d("ProfileUpdate", "Profile picture URL saved successfully")
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e("ProfileUpdate", "Error saving profile picture URL in DB", e)
-                        }
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e("FirebaseUpload", "Error uploading image", e)
-            }
-    }
 }
 
 @Composable
@@ -294,12 +273,20 @@ fun ChangeBioDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 OutlinedTextField(
                     value = newBio,
                     onValueChange = { newBio = it },
-                    label = { Text("New Bio") }
+                    label = { Text("New Bio") },
+                    maxLines = 3
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(newBio) }) {
+            Button(
+                onClick = {
+                    if (newBio.isNotBlank()) {
+                        onConfirm(newBio)
+                    }
+                },
+                enabled = newBio.isNotBlank()
+            ) {
                 Text("Confirm")
             }
         },
@@ -311,8 +298,77 @@ fun ChangeBioDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     )
 }
 
+fun updateUsername(newUsername: String, onComplete: (Boolean) -> Unit) {
+    val user = FirebaseAuth.getInstance().currentUser
+    val database = FirebaseDatabase.getInstance().reference
 
-fun updateBio(newBio: String) {
+    user?.let {
+        val profileUpdates = userProfileChangeRequest {
+            displayName = newUsername
+        }
+
+        user.updateProfile(profileUpdates)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    database.child("users").child(user.uid).child("username")
+                        .setValue(newUsername)
+                        .addOnSuccessListener {
+                            Log.d("UpdateUsername", "Username updated successfully")
+                            onComplete(true)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("UpdateUsername", "Error updating username", e)
+                            onComplete(false)
+                        }
+                } else {
+                    Log.e("UpdateUsername", "Error updating profile", task.exception)
+                    onComplete(false)
+                }
+            }
+    } ?: run {
+        Log.e("UpdateUsername", "User is null")
+        onComplete(false)
+    }
+}
+
+fun uploadImageToFirebase(
+    uri: Uri,
+    user: FirebaseUser?,
+    database: DatabaseReference,
+    storageReference: StorageReference,
+    onComplete: (String?) -> Unit
+) {
+    user?.uid?.let { uid ->
+        val profileImageRef = storageReference.child("profile_images/$uid/profile_image.jpg")
+
+        profileImageRef.putFile(uri)
+            .addOnSuccessListener {
+                profileImageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                    val imageUrl = downloadUri.toString()
+
+                    database.child("profileImageUri")
+                        .setValue(imageUrl)
+                        .addOnSuccessListener {
+                            Log.d("ProfileUpdate", "Profile picture URL saved successfully")
+                            onComplete(imageUrl)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e("ProfileUpdate", "Error saving profile picture URL in DB", e)
+                            onComplete(null)
+                        }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e("FirebaseUpload", "Error uploading image", e)
+                onComplete(null)
+            }
+    } ?: run {
+        Log.e("UploadImage", "User is null")
+        onComplete(null)
+    }
+}
+
+fun updateBio(newBio: String, onComplete: (Boolean) -> Unit) {
     val user = FirebaseAuth.getInstance().currentUser
     val database = FirebaseDatabase.getInstance().reference
 
@@ -321,9 +377,14 @@ fun updateBio(newBio: String) {
             .setValue(newBio)
             .addOnSuccessListener {
                 Log.d("UpdateBio", "Bio updated successfully in Realtime DB")
+                onComplete(true)
             }
             .addOnFailureListener { e ->
                 Log.e("UpdateBio", "Error updating bio in Realtime DB", e)
+                onComplete(false)
             }
+    } ?: run {
+        Log.e("UpdateBio", "User is null")
+        onComplete(false)
     }
 }
