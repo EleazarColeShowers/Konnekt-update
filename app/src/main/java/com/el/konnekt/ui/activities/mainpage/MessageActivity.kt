@@ -83,19 +83,18 @@ import coil.compose.AsyncImage
 import com.el.konnekt.ui.activities.Settings
 import com.el.konnekt.ui.activities.konnekt.Konnekt
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.database.database
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.request.ImageRequest
 import com.android.identity.util.UUID
 import com.el.konnekt.KonnektApplication
 import com.el.konnekt.ui.activities.calls.CallActivity
@@ -105,7 +104,6 @@ import com.el.konnekt.data.ChatViewModel
 import com.el.konnekt.data.ChatViewModelFactory
 import com.el.konnekt.data.remote.FirebaseDataSource
 import com.el.konnekt.data.local.LocalDataSource
-import com.el.konnekt.data.models.Message
 import kotlinx.coroutines.launch
 import kotlin.collections.filterNot
 import kotlin.collections.find
@@ -115,8 +113,8 @@ import com.el.konnekt.data.ForegroundMessageListener
 import com.el.konnekt.data.models.Friend
 import com.el.konnekt.data.models.GroupChat
 import com.el.konnekt.ui.activities.message.ChatActivity
-import com.el.konnekt.utils.ForegroundNotificationHandler
-import com.el.konnekt.utils.MessageObfuscator
+import com.el.konnekt.ui.components.BottomNavItem
+import com.el.konnekt.ui.components.BottomNavigationBar
 import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
 import com.el.konnekt.utils.formatTimestamp
 import com.google.firebase.messaging.FirebaseMessaging
@@ -296,7 +294,6 @@ fun MessagePage() {
         }
     }
 
-    // Load groups in background
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
@@ -308,59 +305,6 @@ fun MessagePage() {
             }
         }
     }
-
-//    DisposableEffect(userId) {
-//        val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
-//
-//        val listener = object : ValueEventListener {
-//            override fun onDataChange(snapshot: DataSnapshot) {
-//                val userGroups = mutableListOf<GroupChat>()
-//
-//                for (groupSnapshot in snapshot.children) {
-//                    val groupId = groupSnapshot.key ?: continue
-//                    if (!groupId.startsWith("group_")) continue
-//
-//                    val membersSnapshot = groupSnapshot.child("members")
-//                    val memberIds = membersSnapshot.children.mapNotNull { it.key }
-//
-//                    if (userId in memberIds) {
-//                        val groupName = groupSnapshot.child("groupName")
-//                            .getValue(String::class.java) ?: "Unnamed Group"
-//                        val groupImage = groupSnapshot.child("groupImage")
-//                            .getValue(String::class.java) ?: ""
-//
-//                        userGroups.add(
-//                            GroupChat(
-//                                groupId = groupId.removePrefix("group_"),
-//                                groupName = groupName,
-//                                members = memberIds,
-//                                groupImage = groupImage
-//                            )
-//                        )
-//                    }
-//                }
-//
-//                viewModel.updateGroupChats(userGroups)
-//                viewModel.refreshCombinedChatList(
-//                    userId,
-//                    friendList,
-//                    searchQuery,
-//                    context,
-//                    userGroups
-//                )
-//            }
-//
-//            override fun onCancelled(error: DatabaseError) {
-//                Log.e("MessagePage", "Failed to sync groups: ${error.message}")
-//            }
-//        }
-//
-//        groupsRef.addValueEventListener(listener)
-//        onDispose {
-//            groupsRef.removeEventListener(listener)
-//        }
-//    }
-
     DisposableEffect(userId) {
         val groupsRef = FirebaseDatabase.getInstance().reference.child("chats")
         var listener: ValueEventListener? = null
@@ -443,7 +387,11 @@ fun MessagePage() {
             val currentBackStackEntry = navController.currentBackStackEntryAsState().value
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute != null && !currentRoute.startsWith("chat")) {
-                BottomAppBar(username = username, profilePic = profilePic)
+                BottomNavigationBar(
+                    currentScreen = BottomNavItem.Messages,
+                    username = username,
+                    profilePic = profilePic
+                )
             }
         },
         floatingActionButton = {
@@ -1063,11 +1011,17 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val combinedList by viewModel.combinedChatList.collectAsState()
     val chatTimestamps by viewModel.chatTimestamps.collectAsState()
+    val groupChats by viewModel.groupChats.collectAsState()
 
 
-
-    LaunchedEffect(searchQuery, friendList, viewModel.groupChats, combinedList.size,chatTimestamps) {
-        viewModel.refreshCombinedChatList(currentUserId, friendList, searchQuery, context, viewModel.groupChats.value)
+    LaunchedEffect(searchQuery, friendList, groupChats) {
+        viewModel.refreshCombinedChatList(
+            currentUserId,
+            friendList,
+            searchQuery,
+            context,
+            groupChats
+        )
     }
 
     LazyColumn(
@@ -1223,19 +1177,13 @@ fun FriendRow(
     val context = LocalContext.current
     val friendUsername = details["username"] ?: "Unknown"
     val friendProfileUri = details["profileImageUri"] ?: ""
-
     val chatId = if (currentUserId < friend.friendId) {
         "${currentUserId}_${friend.friendId}"
     } else {
         "${friend.friendId}_${currentUserId}"
     }
 
-    // ❌ BAD: Creates a listener for EVERY friend
-    // DisposableEffect(chatId) { ... }
-
-    // ✅ GOOD: Get data from ViewModel's centralized listener
     val chatState by viewModel.getChatState(chatId).collectAsState()
-
     val lastMessage = chatState.lastMessage ?: "Send Hi to your new friend!"
     val hasUnreadMessages = chatState.unreadCount > 0
     val unreadCount = chatState.unreadCount
@@ -1259,18 +1207,20 @@ fun FriendRow(
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Profile image with proper sizing
         if (friendProfileUri.isNotEmpty()) {
             AsyncImage(
-                model = friendProfileUri,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(friendProfileUri)
+                    .memoryCacheKey("profile_$friendProfileUri")
+                    .diskCacheKey("profile_$friendProfileUri")
+                    .crossfade(true)
+                    .size(52.dp.value.toInt())
+                    .build(),
                 contentDescription = "Profile Image",
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape),
+                modifier = Modifier.size(52.dp).clip(CircleShape),
                 contentScale = ContentScale.Crop,
-                // Add these for memory efficiency
-//                memoryCacheKey = "profile_$friendProfileUri",
-//                diskCacheKey = "profile_$friendProfileUri"
+                placeholder = painterResource(R.drawable.nopfp),
+                error = painterResource(R.drawable.nopfp)
             )
         } else {
             Box(
@@ -1540,93 +1490,6 @@ sealed class ChatItem {
         val group: GroupChat,
         val timestamp: Long
     ) : ChatItem()
-}
-
-
-@Composable
-fun BottomAppBar(username: String,profilePic: Uri) {
-    var activeItem by remember { mutableStateOf(BottomAppBarItem.Messages) }
-    val context= LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BottomAppBarItem(
-            label = "Messages",
-            isActive = activeItem == BottomAppBarItem.Messages,
-            activeIcon = R.drawable.bottombar_activemessagespage,
-            passiveIcon = R.drawable.bottombar_passivemessagespage,
-            onClick = {
-                activeItem = BottomAppBarItem.Messages
-                val intent = Intent(context, MessageActivity::class.java)
-                context.startActivity(intent)
-            }
-        )
-
-        BottomAppBarItem(
-            label = "Call Logs",
-            isActive = activeItem == BottomAppBarItem.Calls,
-            activeIcon = R.drawable.bottombar_activecallspage,
-            passiveIcon = R.drawable.bottombar_passivecallspage,
-            onClick = {
-                activeItem = BottomAppBarItem.Calls
-                val intent = Intent(context, CallActivity::class.java)
-                context.startActivity(intent)
-            }
-
-        )
-
-        BottomAppBarItem(
-            label = "Konnekt",
-            isActive = activeItem == BottomAppBarItem.AddFriends,
-            activeIcon = R.drawable.bottombar_activeaddfriendspage,
-            passiveIcon = R.drawable.bottombar_passiveaddfriendspage,
-            onClick = {
-                activeItem = BottomAppBarItem.AddFriends
-                val intent = Intent(context, Konnekt::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-    }
-}
-
-enum class BottomAppBarItem {
-    Messages,
-    Calls,
-    AddFriends
-}
-
-@Composable
-fun BottomAppBarItem(label: String, isActive: Boolean, activeIcon: Int, passiveIcon: Int, onClick: () -> Unit) {
-    Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
-
-    Column(
-        modifier = Modifier
-            .width(68.dp)
-            .height(52.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
-            contentDescription = label,
-            modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
-        )
-    }
 }
 
 @Composable

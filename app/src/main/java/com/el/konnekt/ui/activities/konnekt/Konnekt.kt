@@ -84,6 +84,8 @@ import com.el.konnekt.data.remote.FirebaseDataSource
 import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.ui.activities.mainpage.MessageActivity
 import com.el.konnekt.ui.activities.mainpage.ProfileActivity
+import com.el.konnekt.ui.components.BottomNavItem
+import com.el.konnekt.ui.components.BottomNavigationBar
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
 import com.el.konnekt.utils.ForegroundNotificationHandler
 import com.google.android.gms.tasks.Tasks
@@ -207,10 +209,10 @@ fun AddFriendsPage() {
                 .fillMaxWidth()
                 .height(80.dp)
         ) {
-            BottomAppBarKonnekt(
+            BottomNavigationBar(
+                currentScreen = BottomNavItem.Konnekt,
                 username = username,
-                profilePic = profilePic,
-
+                profilePic = profilePic
             )
         }
     }
@@ -249,24 +251,28 @@ fun UserAddFriends() {
         }
     }
 
-    fun performSearch(query: String) {
-        if (query.isNotEmpty()) {
-            searchResults = allUsers.filter {
-                val username = it["username"] as? String ?: ""
-                username.contains(query, ignoreCase = true)
+    val performSearch = remember {
+        { query: String ->
+            if (query.isNotEmpty()) {
+                searchResults = allUsers.filter {
+                    val username = it["username"] as? String ?: ""
+                    username.contains(query, ignoreCase = true)
+                }
+                searchPerformed = true
+            } else {
+                searchResults = listOf()
+                searchPerformed = false
             }
-            searchPerformed = true
-        } else {
-            searchResults = listOf()
-            searchPerformed = false
         }
     }
+
 
     fun loadAllUsers() {
         database.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 val users = dataSnapshot.children.mapNotNull { snapshot ->
                     val uid = snapshot.key ?: return@mapNotNull null
+                    if (uid == userId) return@mapNotNull null
                     val userMap = snapshot.value as? Map<String, Any>
                     userMap?.let {
                         mapOf(
@@ -288,7 +294,9 @@ fun UserAddFriends() {
     }
 
 
-    loadAllUsers()
+    LaunchedEffect(Unit) {
+        loadAllUsers()
+    }
 
     fun sendFriendRequest(targetUserId: String) {
         val currentUser = FirebaseAuth.getInstance().currentUser
@@ -916,182 +924,3 @@ private fun handleFriendRequest(
     }
 }
 
-//private fun handleFriendRequest(
-//    request: FriendRequest,
-//    isAccepted: Boolean,
-//    showDialog: MutableState<Boolean>,
-//    message: MutableState<String>,
-//    username: String,
-//    onComplete: () -> Unit = {}
-//) {
-//    val db = Firebase.database.reference
-//    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-//
-//    if (isAccepted) {
-//        Log.d("FriendRequest", "Accepted: Deleting from received and sent requests")
-//
-//        // Find and delete from received_requests
-//        db.child("users").child(userId).child("received_requests")
-//            .orderByChild("from").equalTo(request.from)
-//            .get()
-//            .addOnSuccessListener { snapshot ->
-//                snapshot.children.forEach { it.ref.removeValue() }
-//
-//                // Find and delete from sent_requests
-//                db.child("users").child(request.from).child("sent_requests")
-//                    .orderByChild("to").equalTo(userId)
-//                    .get()
-//                    .addOnSuccessListener { sentSnapshot ->
-//                        sentSnapshot.children.forEach { it.ref.removeValue() }
-//
-//                        // Add friends
-//                        val receiverToSender = mapOf(
-//                            "friendId" to request.from,
-//                            "timestamp" to System.currentTimeMillis()
-//                        )
-//                        db.child("users").child(userId).child("friends").push()
-//                            .setValue(receiverToSender)
-//                            .addOnSuccessListener {
-//                                val senderToReceiver = mapOf(
-//                                    "friendId" to userId,
-//                                    "timestamp" to System.currentTimeMillis()
-//                                )
-//                                db.child("users").child(request.from).child("friends").push()
-//                                    .setValue(senderToReceiver)
-//                                    .addOnSuccessListener {
-//                                        Log.d("FriendRequest", "Friend request accepted and both users added as friends.")
-//                                        showDialog.value = true
-//                                        message.value = "You are now friends with $username"
-//                                        onComplete()
-//                                    }
-//                                    .addOnFailureListener { e ->
-//                                        Log.e("FriendRequest", "Failed to add sender to receiver's friends: ${e.message}")
-//                                    }
-//                            }
-//                            .addOnFailureListener { e ->
-//                                Log.e("FriendRequest", "Failed to add receiver to sender's friends: ${e.message}")
-//                            }
-//                    }
-//                    .addOnFailureListener { e ->
-//                        Log.e("FriendRequest", "Failed to delete from sent requests: ${e.message}")
-//                    }
-//            }
-//            .addOnFailureListener { e ->
-//                Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
-//            }
-//    } else {
-//        Log.d("FriendRequest", "Declined: Removing request from both received and sent requests")
-//
-//        // Delete from received_requests
-//        db.child("users").child(userId).child("received_requests")
-//            .orderByChild("from").equalTo(request.from)
-//            .get()
-//            .addOnSuccessListener { snapshot ->
-//                snapshot.children.forEach { it.ref.removeValue() }
-//
-//                // Delete from sent_requests
-//                db.child("users").child(request.from).child("sent_requests")
-//                    .orderByChild("to").equalTo(userId)
-//                    .get()
-//                    .addOnSuccessListener { sentSnapshot ->
-//                        sentSnapshot.children.forEach { it.ref.removeValue() }
-//                        Log.d("FriendRequest", "Friend request declined and removed from both users.")
-//                        onComplete()
-//                    }
-//                    .addOnFailureListener { e ->
-//                        Log.e("FriendRequest", "Failed to delete from sender's sent requests: ${e.message}")
-//                    }
-//            }
-//            .addOnFailureListener { e ->
-//                Log.e("FriendRequest", "Failed to delete from received requests: ${e.message}")
-//            }
-//    }
-//}
-
-
-enum class BottomAppBarItem {
-    Messages,
-    Calls,
-    AddFriends
-}
-
-@Composable
-fun BottomAppBarKonnekt(username: String,profilePic: Uri) {
-    var activeItem by remember { mutableStateOf(BottomAppBarItem.AddFriends) }
-    val context= LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BottomAppBarItemKonnekt(
-            label = "Messages",
-            isActive = activeItem == BottomAppBarItem.Messages,
-            activeIcon = R.drawable.bottombar_activemessagespage,
-            passiveIcon = R.drawable.bottombar_passivemessagespage,
-            onClick = {
-                activeItem = BottomAppBarItem.Messages
-                val intent = Intent(context, MessageActivity::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-        BottomAppBarItemKonnekt(
-            label = "Call Logs",
-            isActive = activeItem == BottomAppBarItem.Calls,
-            activeIcon = R.drawable.bottombar_activecallspage,
-            passiveIcon = R.drawable.bottombar_passivecallspage,
-            onClick = { activeItem = BottomAppBarItem.Calls }
-        )
-        BottomAppBarItemKonnekt(
-            label = "Konnekt",
-            isActive = activeItem == BottomAppBarItem.AddFriends,
-            activeIcon = R.drawable.bottombar_activeaddfriendspage,
-            passiveIcon = R.drawable.bottombar_passiveaddfriendspage,
-            onClick = {
-                activeItem = BottomAppBarItem.AddFriends
-                val intent = Intent(context, Konnekt::class.java)
-                intent.putExtra("username", username)
-                intent.putExtra("profileUri", profilePic.toString())
-                context.startActivity(intent)
-            }
-        )
-    }
-}
-
-@Composable
-fun BottomAppBarItemKonnekt(
-    label: String,
-    isActive: Boolean,
-    activeIcon: Int,
-    passiveIcon: Int,
-    onClick: () -> Unit
-) {
-    Log.d("BottomAppBarItem", "Rendering item: $label, isActive: $isActive")
-
-    Column(
-        modifier = Modifier
-            .width(68.dp)
-            .height(52.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(id = if (isActive) activeIcon else passiveIcon),
-            contentDescription = label,
-            modifier = Modifier.size(24.dp)
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = if (isActive) Color(0xFF2F9ECE) else MaterialTheme.colorScheme.onBackground
-        )
-    }
-}
