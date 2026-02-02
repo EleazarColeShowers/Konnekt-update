@@ -119,7 +119,7 @@ class ChatViewModel(
                         if (messages.isNotEmpty()) {
                             val lastMsg = messages.last()
                             val decryptionKey = if (chatId.startsWith("group_")) {
-                                chatId.removePrefix("group_")  // "group_abc123" → "abc123"
+                                chatId.removePrefix("group_")
                             } else {
                                 chatId
                             }
@@ -133,12 +133,20 @@ class ChatViewModel(
                                 it.receiverId == currentUserId && !it.seen
                             }
 
+                            // Update chat state
                             _chatStates[chatId]?.value = ChatState(
                                 lastMessage = deobfuscatedText,
                                 timestamp = lastMsg.timestamp,
                                 unreadCount = unreadMessages,
                                 hasUnreadMessages = unreadMessages > 0
                             )
+
+                            // ✅ CRITICAL FIX: Update timestamp and trigger re-sort
+                            withContext(Dispatchers.Main) {
+                                updateChatTimestamp(chatId, lastMsg.timestamp)
+                                // Trigger re-sort of combined list
+                                resortCombinedChatList()
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("ChatViewModel", "Error processing chat $chatId", e)
@@ -153,6 +161,41 @@ class ChatViewModel(
 
         chatListeners[chatId] = listener
         db.addValueEventListener(listener)
+    }
+
+    private fun resortCombinedChatList() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val currentList = _combinedChatList.value
+            val timestamps = _chatTimestamps.value
+
+            val sorted = currentList.map { item ->
+                when (item) {
+                    is ChatItem.FriendItem -> {
+                        val chatId = if (currentUserId < item.friend.friendId) {
+                            "${currentUserId}_${item.friend.friendId}"
+                        } else {
+                            "${item.friend.friendId}_${currentUserId}"
+                        }
+                        val updatedTimestamp = timestamps[chatId] ?: item.timestamp
+                        item.copy(timestamp = updatedTimestamp)
+                    }
+                    is ChatItem.GroupItem -> {
+                        val chatId = "group_${item.group.groupId}"
+                        val updatedTimestamp = timestamps[chatId] ?: item.timestamp
+                        item.copy(timestamp = updatedTimestamp)
+                    }
+                }
+            }.sortedByDescending { item ->
+                when (item) {
+                    is ChatItem.FriendItem -> item.timestamp
+                    is ChatItem.GroupItem -> item.timestamp
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                _combinedChatList.value = sorted
+            }
+        }
     }
 
     private fun isOnline(context: Context): Boolean {
@@ -216,11 +259,22 @@ class ChatViewModel(
             val online = isOnline(context)
 
             val friendItems = if (online && friendList.isNotEmpty()) {
-                friendList.map { (friend, details) ->
+                friendList.mapNotNull { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId)
-                        "${currentUserId}_${friend.friendId}" else "${friend.friendId}_${currentUserId}"
-//                    val timestamp = repo.fetchLastMessageTimestamp(chatId)
-                    val timestamp = _chatTimestamps.value[chatId] ?: repo.fetchLastMessageTimestamp(chatId)
+                        "${currentUserId}_${friend.friendId}"
+                    else
+                        "${friend.friendId}_${currentUserId}"
+
+                    // Use cached timestamp or fetch from Firebase
+                    val timestamp = _chatTimestamps.value[chatId]
+                        ?: repo.fetchLastMessageTimestamp(chatId)
+
+                    // Ensure we're listening to this chat
+                    if (!chatListeners.containsKey(chatId)) {
+                        withContext(Dispatchers.Main) {
+                            getChatState(chatId) // This starts the listener
+                        }
+                    }
 
                     repo.saveUserToLocal(
                         UserEntity(
@@ -248,27 +302,41 @@ class ChatViewModel(
                 }
             } else {
                 repo.loadFriendsFromLocal(currentUserId).map {
-                    val details = mapOf("username" to it.username, "profileImageUri" to it.profileImageUri)
+                    val details = mapOf(
+                        "username" to it.username,
+                        "profileImageUri" to it.profileImageUri
+                    )
                     ChatItem.FriendItem(Friend(it.friendId), details, it.timestamp)
                 }
             }.filter {
-                it.details["username"]?.contains(searchQuery, ignoreCase = true) ?: false
+                searchQuery.isEmpty() ||
+                        it.details["username"]?.contains(searchQuery, ignoreCase = true) == true
             }
 
-            // groups
+            // Groups
             val groupItems = if (online && groupChats.isNotEmpty()) {
-                groupChats.map {
-                    val timestamp = _chatTimestamps.value[it.groupId] ?: repo.fetchLastMessageTimestamp(it.groupId)
+                groupChats.mapNotNull { group ->
+                    val chatId = "group_${group.groupId}"
+                    val timestamp = _chatTimestamps.value[chatId]
+                        ?: repo.fetchLastMessageTimestamp(chatId)
+
+                    // Ensure we're listening to this chat
+                    if (!chatListeners.containsKey(chatId)) {
+                        withContext(Dispatchers.Main) {
+                            getChatState(chatId) // This starts the listener
+                        }
+                    }
+
                     repo.saveGroupEntities(
                         GroupEntity(
-                            groupId = it.groupId,
+                            groupId = group.groupId,
                             userId = currentUserId,
-                            groupName = it.groupName,
-                            groupImageUri = it.groupImage,
-                            memberIds = it.members.joinToString(",")
+                            groupName = group.groupName,
+                            groupImageUri = group.groupImage,
+                            memberIds = group.members.joinToString(",")
                         )
                     )
-                    ChatItem.GroupItem(it, timestamp)
+                    ChatItem.GroupItem(group, timestamp)
                 }
             } else {
                 repo.loadGroupsForUser(currentUserId)
@@ -286,14 +354,19 @@ class ChatViewModel(
                         )
                     }
             }.filter {
-                it.group.groupName.contains(searchQuery, ignoreCase = true)
+                searchQuery.isEmpty() ||
+                        it.group.groupName.contains(searchQuery, ignoreCase = true)
             }
 
-            _combinedChatList.value = (friendItems + groupItems).sortedByDescending {
-                when (it) {
-                    is ChatItem.FriendItem -> it.timestamp
-                    is ChatItem.GroupItem -> it.timestamp
+            val combined = (friendItems + groupItems).sortedByDescending { item ->
+                when (item) {
+                    is ChatItem.FriendItem -> item.timestamp
+                    is ChatItem.GroupItem -> item.timestamp
                 }
+            }
+
+            withContext(Dispatchers.Main) {
+                _combinedChatList.value = combined
             }
         }
     }
@@ -578,12 +651,13 @@ class ChatViewModel(
         chatListeners.clear()
         _chatStates.clear()
     }
+
     fun updateChatTimestamp(chatId: String, timestamp: Long) {
         val currentTimestamps = _chatTimestamps.value.toMutableMap()
         currentTimestamps[chatId] = timestamp
-        _chatTimestamps.value = currentTimestamps // This creates a new map, triggering observers
+        _chatTimestamps.value = currentTimestamps
 
-        Log.d("ChatViewModel", "Updated timestamp for $chatId: $timestamp")
+        Log.d("ChatViewModel", "✅ Updated timestamp for $chatId: $timestamp")
     }
 
     fun createGroup(

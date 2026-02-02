@@ -55,70 +55,69 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.android.identity.util.UUID
+import com.el.konnekt.KonnektApplication
+import com.el.konnekt.R
+import com.el.konnekt.data.ChatViewModel
+import com.el.konnekt.data.ChatViewModelFactory
+import com.el.konnekt.data.ForegroundFriendRequestListener
+import com.el.konnekt.data.ForegroundMessageListener
+import com.el.konnekt.data.local.AppDatabase
+import com.el.konnekt.data.local.LocalDataSource
+import com.el.konnekt.data.models.Friend
+import com.el.konnekt.data.models.GroupChat
+import com.el.konnekt.data.remote.FirebaseDataSource
+import com.el.konnekt.data.repository.ChatRepository
 import com.el.konnekt.ui.activities.Settings
-import com.el.konnekt.ui.activities.konnekt.Konnekt
+import com.el.konnekt.ui.activities.message.ChatActivity
+import com.el.konnekt.ui.components.BottomNavItem
+import com.el.konnekt.ui.components.BottomNavigationBar
 import com.el.konnekt.ui.theme.InstaChatComposeTheme
+import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
+import com.el.konnekt.utils.formatTimestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.request.ImageRequest
-import com.android.identity.util.UUID
-import com.el.konnekt.KonnektApplication
-import com.el.konnekt.ui.activities.calls.CallActivity
-import com.el.konnekt.data.local.AppDatabase
-import com.el.konnekt.data.repository.ChatRepository
-import com.el.konnekt.data.ChatViewModel
-import com.el.konnekt.data.ChatViewModelFactory
-import com.el.konnekt.data.remote.FirebaseDataSource
-import com.el.konnekt.data.local.LocalDataSource
-import kotlinx.coroutines.launch
-import kotlin.collections.filterNot
-import kotlin.collections.find
-import com.el.konnekt.R
-import com.el.konnekt.data.ForegroundFriendRequestListener
-import com.el.konnekt.data.ForegroundMessageListener
-import com.el.konnekt.data.models.Friend
-import com.el.konnekt.data.models.GroupChat
-import com.el.konnekt.ui.activities.message.ChatActivity
-import com.el.konnekt.ui.components.BottomNavItem
-import com.el.konnekt.ui.components.BottomNavigationBar
-import com.el.konnekt.utils.NotificationHelper.createNotificationChannel
-import com.el.konnekt.utils.formatTimestamp
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MessageActivity: ComponentActivity() {
@@ -244,7 +243,6 @@ fun MessagePage() {
 
     val cachedFriends by viewModel.cachedFriends.collectAsState()
 
-    // Load user profile in background
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
@@ -256,7 +254,6 @@ fun MessagePage() {
         }
     }
 
-    // Load friends with improved error handling
     LaunchedEffect(userId) {
         if (userId.isEmpty()) {
             isLoading = false
@@ -440,10 +437,8 @@ fun MessagePage() {
                             }
                         }
                     } else if (friendList.isEmpty() && viewModel.groupChats.value.isEmpty()) {
-                        // Empty state - show welcome message
                         MessageFrag(username = username)
                     } else {
-                        // Show friends list
                         FriendsListScreen(
                             friendList = friendList,
                             navController = navController,
@@ -809,7 +804,6 @@ fun User(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Username with ellipsis for long names
                 Text(
                     text = username,
                     style = TextStyle(
@@ -1003,14 +997,11 @@ fun MessageFrag(username: String){
 @Composable
 fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
     val context = LocalContext.current
-    var isRefreshing by remember { mutableStateOf(false) }
-
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
     var showGroupDialog by remember { mutableStateOf(false) }
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val combinedList by viewModel.combinedChatList.collectAsState()
-    val chatTimestamps by viewModel.chatTimestamps.collectAsState()
     val groupChats by viewModel.groupChats.collectAsState()
 
 
@@ -1491,6 +1482,7 @@ sealed class ChatItem {
         val timestamp: Long
     ) : ChatItem()
 }
+
 
 @Composable
 fun fetchReceivedRequestsCount(userId: String): State<Int> {

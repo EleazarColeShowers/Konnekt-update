@@ -105,7 +105,6 @@ class Konnekt : ComponentActivity() {
 
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
 
-        // Load username in background to prevent blocking
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val database = FirebaseDatabase.getInstance().reference
@@ -135,7 +134,6 @@ class Konnekt : ComponentActivity() {
         super.onResume()
         KonnektApplication.setCurrentChat(null)
 
-        // Start listeners in background
         val userId = FirebaseAuth.getInstance().currentUser?.uid
         if (userId != null) {
             lifecycleScope.launch(Dispatchers.IO) {
