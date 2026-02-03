@@ -14,8 +14,8 @@ android {
         applicationId "com.el.konnekt"
         minSdk 24
         targetSdk 35
-        versionCode 10
-        versionName "1.9"
+        versionCode 11
+        versionName "1.11"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -93,6 +93,12 @@ dependencies {
     implementation 'com.google.firebase:firebase-messaging:24.1.1'
     debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.12'
     implementation("androidx.compose.material:material-icons-extended")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.test.ext:junit:1.1.5")
+
+    testImplementation("org.mockito:mockito-core:5.3.1")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.0.0")
 
 
 }

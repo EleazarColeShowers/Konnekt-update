@@ -80,7 +80,6 @@ class SignUpActivity: ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             InstaChatComposeTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -533,15 +532,12 @@ fun performSignUp(auth: FirebaseAuth, context: ComponentActivity, email: String,
         if (task.isSuccessful) {
             createUser(username = usernameTxt, email = email)
 
-            // 🔐 Generate RSA key pair for this user
             val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return@addOnCompleteListener
             CryptoUtil.generateRsaKeyPairIfNeeded(userId)
 
-            // 📤 Upload public key to Firebase
             val publicKeyBase64 = CryptoUtil.getPublicKeyBase64(userId)
             Firebase.database.reference.child("users").child(userId).child("publicKey").setValue(publicKeyBase64)
 
-            // Continue to profile setup
             val intent = Intent(context, ProfileSetUp::class.java)
             context.startActivity(intent)
 

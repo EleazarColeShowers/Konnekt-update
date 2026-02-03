@@ -255,24 +255,24 @@ class ChatViewModel(
         context: Context,
         groupChats: List<GroupChat>
     ) {
+        val friendListSnapshot = ArrayList(friendList)
+        val groupChatsSnapshot = ArrayList(groupChats)
         viewModelScope.launch(Dispatchers.IO) {
             val online = isOnline(context)
 
-            val friendItems = if (online && friendList.isNotEmpty()) {
-                friendList.mapNotNull { (friend, details) ->
+            val friendItems = if (online && friendListSnapshot.isNotEmpty()) {
+                friendListSnapshot.mapNotNull { (friend, details) ->
                     val chatId = if (currentUserId < friend.friendId)
                         "${currentUserId}_${friend.friendId}"
                     else
                         "${friend.friendId}_${currentUserId}"
 
-                    // Use cached timestamp or fetch from Firebase
                     val timestamp = _chatTimestamps.value[chatId]
                         ?: repo.fetchLastMessageTimestamp(chatId)
 
-                    // Ensure we're listening to this chat
                     if (!chatListeners.containsKey(chatId)) {
                         withContext(Dispatchers.Main) {
-                            getChatState(chatId) // This starts the listener
+                            getChatState(chatId)
                         }
                     }
 
@@ -313,17 +313,15 @@ class ChatViewModel(
                         it.details["username"]?.contains(searchQuery, ignoreCase = true) == true
             }
 
-            // Groups
-            val groupItems = if (online && groupChats.isNotEmpty()) {
-                groupChats.mapNotNull { group ->
+            val groupItems = if (online && groupChatsSnapshot.isNotEmpty()) {
+                groupChatsSnapshot.mapNotNull { group ->
                     val chatId = "group_${group.groupId}"
                     val timestamp = _chatTimestamps.value[chatId]
                         ?: repo.fetchLastMessageTimestamp(chatId)
 
-                    // Ensure we're listening to this chat
                     if (!chatListeners.containsKey(chatId)) {
                         withContext(Dispatchers.Main) {
-                            getChatState(chatId) // This starts the listener
+                            getChatState(chatId)
                         }
                     }
 
@@ -358,7 +356,11 @@ class ChatViewModel(
                         it.group.groupName.contains(searchQuery, ignoreCase = true)
             }
 
-            val combined = (friendItems + groupItems).sortedByDescending { item ->
+            // ✅ CRITICAL FIX: Remove duplicates before combining
+            val uniqueFriendItems = friendItems.distinctBy { it.friend.friendId }
+            val uniqueGroupItems = groupItems.distinctBy { it.group.groupId }
+
+            val combined = (uniqueFriendItems + uniqueGroupItems).sortedByDescending { item ->
                 when (item) {
                     is ChatItem.FriendItem -> item.timestamp
                     is ChatItem.GroupItem -> item.timestamp
@@ -413,6 +415,34 @@ class ChatViewModel(
                 Log.d("ChatViewModel", "Friend removed successfully")
             } else {
                 Log.e("ChatViewModel", "Failed to remove friend: ${result.exceptionOrNull()?.message}")
+            }
+        }
+    }
+
+    fun removeFriendFromCache(friendId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Remove from cached friends list
+            _cachedFriends.value = _cachedFriends.value.filterNot {
+                it.first.friendId == friendId
+            }
+
+            // Remove from combined chat list
+            _combinedChatList.value = _combinedChatList.value.filterNot { item ->
+                when (item) {
+                    is ChatItem.FriendItem -> item.friend.friendId == friendId
+                    else -> false
+                }
+            }
+
+            // Remove from local database
+            try {
+                database.friendDao().deleteFriend(
+                    friendId,
+                    userId = currentUserId
+                )
+                Log.d("ChatViewModel", "Friend removed from local cache: $friendId")
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error removing friend from local DB", e)
             }
         }
     }

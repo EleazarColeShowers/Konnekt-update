@@ -510,6 +510,15 @@ fun CreateGroupBottomSheet(
         groupImageUri = uri
     }
 
+    val validFriends = remember(friendList, currentUserId) {
+        friendList
+            .filter { (friend, _) ->
+                friend.friendId.isNotBlank() && friend.friendId != currentUserId
+            }
+            .distinctBy { (friend, _) -> friend.friendId }
+    }
+
+
     ModalBottomSheet(
         onDismissRequest = { onDismiss() },
         sheetState = sheetState,
@@ -622,15 +631,17 @@ fun CreateGroupBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // ✅ FIXED: Use pre-filtered list with proper key
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(friendList, key = { (friend, _) ->
-                    friend.friendId.ifBlank { UUID.randomUUID().toString() }
-                }) { (friend, details) ->
+                items(
+                    items = validFriends,
+                    key = { (friend, _) -> "create_group_friend_${friend.friendId}" }  // ✅ Unique prefix
+                ) { (friend, details) ->
                     val friendId = friend.friendId
                     val username = details["username"] ?: "Unknown"
                     val profileImage = details["profileImageUri"] ?: ""
@@ -756,7 +767,6 @@ fun CreateGroupBottomSheet(
         }
     }
 }
-
 @Composable
 fun User(
     username: String,
@@ -995,7 +1005,13 @@ fun MessageFrag(username: String){
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navController: NavController, currentUserId: String, searchQuery: String, viewModel: ChatViewModel) {
+fun FriendsListScreen(
+    friendList: List<Pair<Friend, Map<String, String>>>,
+    navController: NavController,
+    currentUserId: String,
+    searchQuery: String,
+    viewModel: ChatViewModel
+) {
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
     var friendToRemove by remember { mutableStateOf<Friend?>(null) }
@@ -1003,7 +1019,6 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
     var groupToLeave by remember { mutableStateOf<GroupChat?>(null) }
     val combinedList by viewModel.combinedChatList.collectAsState()
     val groupChats by viewModel.groupChats.collectAsState()
-
 
     LaunchedEffect(searchQuery, friendList, groupChats) {
         viewModel.refreshCombinedChatList(
@@ -1019,7 +1034,16 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(combinedList) { item ->
+        // ✅ FIXED: Use unique keys with type prefix to avoid duplicates
+        items(
+            items = combinedList,
+            key = { item ->
+                when (item) {
+                    is ChatItem.FriendItem -> "friend_${item.friend.friendId}"
+                    is ChatItem.GroupItem -> "group_${item.group.groupId}"
+                }
+            }
+        ) { item ->
             when (item) {
                 is ChatItem.FriendItem -> {
                     val friend = item.friend
@@ -1071,17 +1095,20 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                             )
                         }
                     )
-
                 }
             }
         }
     }
+
     if (showDialog && friendToRemove != null) {
         val usernameToRemove = friendToRemove?.let { friend ->
             friendList.find { it.first.friendId == friend.friendId }?.second?.get("username") ?: "this friend"
         }
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = {
+                showDialog = false
+                friendToRemove = null
+            },
             title = { Text("Remove Friend") },
             text = { Text("Are you sure you want to remove $usernameToRemove as a friend?") },
             confirmButton = {
@@ -1089,37 +1116,38 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                     onClick = {
                         friendToRemove?.let { friend ->
                             viewModel.removeFriendFromDatabase(currentUserId, friend.friendId)
+                            viewModel.removeFriendFromCache(friend.friendId)
 
                             Toast.makeText(
                                 context,
                                 "$usernameToRemove is no longer a friend",
                                 Toast.LENGTH_SHORT
                             ).show()
-
-                            viewModel.refreshCombinedChatList(
-                                currentUserId,
-                                friendList.filterNot { it.first.friendId == friend.friendId }, // updated list
-                                searchQuery,
-                                context,
-                                viewModel.groupChats.value
-                            )
                         }
                         showDialog = false
+                        friendToRemove = null
                     }
                 ) {
                     Text("Yes")
                 }
             },
             dismissButton = {
-                Button(onClick = { showDialog = false }) {
+                Button(onClick = {
+                    showDialog = false
+                    friendToRemove = null
+                }) {
                     Text("No")
                 }
             }
         )
     }
+
     if (showGroupDialog && groupToLeave != null) {
         AlertDialog(
-            onDismissRequest = { showGroupDialog = false },
+            onDismissRequest = {
+                showGroupDialog = false
+                groupToLeave = null
+            },
             title = { Text("Leave Group") },
             text = { Text("Are you sure you want to leave '${groupToLeave?.groupName}'?") },
             confirmButton = {
@@ -1133,30 +1161,25 @@ fun FriendsListScreen(friendList: List<Pair<Friend, Map<String, String>>>, navCo
                                 "You left '${group.groupName}'",
                                 Toast.LENGTH_SHORT
                             ).show()
-
-                            viewModel.refreshCombinedChatList(
-                                currentUserId,
-                                friendList,
-                                searchQuery,
-                                context,
-                                viewModel.groupChats.value.filterNot { it.groupId == group.groupId }
-                            )
                         }
                         showGroupDialog = false
+                        groupToLeave = null
                     }
                 ) {
                     Text("Yes")
                 }
             },
             dismissButton = {
-                Button(onClick = { showGroupDialog = false }) {
+                Button(onClick = {
+                    showGroupDialog = false
+                    groupToLeave = null
+                }) {
                     Text("No")
                 }
             }
         )
     }
 }
-
 @Composable
 fun FriendRow(
     friend: Friend,
