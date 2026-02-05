@@ -163,6 +163,32 @@ class ChatViewModel(
         db.addValueEventListener(listener)
     }
 
+    private val MAX_ACTIVE_LISTENERS = 50
+
+    fun cleanupOldListeners() {
+        if (chatListeners.size > MAX_ACTIVE_LISTENERS) {
+            val sortedByTimestamp = _chatTimestamps.value.entries
+                .sortedBy { it.value }
+                .take(chatListeners.size - MAX_ACTIVE_LISTENERS)
+
+            sortedByTimestamp.forEach { (chatId, _) ->
+                stopListeningToChat(chatId)
+            }
+        }
+    }
+
+    fun stopListeningToChat(chatId: String) {
+        chatListeners[chatId]?.let { listener ->
+            FirebaseDatabase.getInstance().reference
+                .child("chats")
+                .child(chatId)
+                .child("messages")
+                .removeEventListener(listener)
+            chatListeners.remove(chatId)
+            _chatStates.remove(chatId)
+        }
+    }
+
     private fun resortCombinedChatList() {
         viewModelScope.launch(Dispatchers.IO) {
             val currentList = _combinedChatList.value

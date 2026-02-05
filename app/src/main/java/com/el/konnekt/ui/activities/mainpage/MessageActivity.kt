@@ -413,9 +413,7 @@ fun MessagePage() {
             ) {
                 composable("message") { MessageFrag(username = username) }
                 composable("friends") {
-                    // CHANGED: Show loading indicator or friends list
                     if (isLoading) {
-                        // Loading state
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center

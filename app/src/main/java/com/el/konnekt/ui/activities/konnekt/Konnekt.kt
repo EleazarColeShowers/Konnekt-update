@@ -12,7 +12,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,15 +28,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,7 +71,6 @@ import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
 import com.el.konnekt.KonnektApplication
 import com.el.konnekt.R
-import com.el.konnekt.ui.activities.Settings
 import com.el.konnekt.data.ChatViewModel
 import com.el.konnekt.data.ChatViewModelFactory
 import com.el.konnekt.data.ForegroundFriendRequestListener
@@ -82,7 +79,7 @@ import com.el.konnekt.data.local.AppDatabase
 import com.el.konnekt.data.local.LocalDataSource
 import com.el.konnekt.data.remote.FirebaseDataSource
 import com.el.konnekt.data.repository.ChatRepository
-import com.el.konnekt.ui.activities.mainpage.MessageActivity
+import com.el.konnekt.ui.activities.Settings
 import com.el.konnekt.ui.activities.mainpage.ProfileActivity
 import com.el.konnekt.ui.components.BottomNavItem
 import com.el.konnekt.ui.components.BottomNavigationBar
@@ -193,12 +190,10 @@ fun AddFriendsPage() {
             ) {
                 composable("user_add_friends") {
                     Column {
-                        UserAddFriends(
-                        )
+                        UserAddFriends()
                         UserReceivesRequest()
                     }
                 }
-
             }
         }
         Box(
@@ -218,18 +213,21 @@ fun AddFriendsPage() {
 
 @Composable
 fun UserAddFriends() {
-    val settingsIcon = painterResource(id = R.drawable.settings)
-    val searchIcon = painterResource(id = R.drawable.searchicon)
     val context = LocalContext.current as ComponentActivity
 
     var searchResults by remember { mutableStateOf(listOf<Map<String, Any>>()) }
     val database = FirebaseDatabase.getInstance().getReference("users")
     var search by remember { mutableStateOf("") }
     var searchPerformed by remember { mutableStateOf(false) }
-    var allUsers by remember { mutableStateOf(listOf<Map<String, Any>>()) }
+    var isSearching by remember { mutableStateOf(false) }
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var profilePicUrl by remember { mutableStateOf<String?>(null) }
     var username by remember { mutableStateOf("Loading...") }
+
+    // ✅ OPTIMIZATION: Add rate limiting for friend requests
+    var lastRequestTime by remember { mutableStateOf(0L) }
+    val REQUEST_COOLDOWN = 2000L // 2 seconds
+
     val app = context.applicationContext as Application
 
     val viewModel: ChatViewModel = viewModel(
@@ -242,6 +240,7 @@ fun UserAddFriends() {
         )
     )
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
     LaunchedEffect(userId) {
         viewModel.fetchUserProfile(context, userId) { fetchedUsername, fetchedProfilePicUrl ->
             username = fetchedUsername ?: "Unknown"
@@ -249,102 +248,131 @@ fun UserAddFriends() {
         }
     }
 
-    val performSearch = remember {
-        { query: String ->
-            if (query.isNotEmpty()) {
-                searchResults = allUsers.filter {
-                    val username = it["username"] as? String ?: ""
-                    username.contains(query, ignoreCase = true)
-                }
-                searchPerformed = true
-            } else {
-                searchResults = listOf()
-                searchPerformed = false
-            }
+    // ✅ OPTIMIZED: Search Firebase directly instead of loading all users
+    fun performSearch(query: String) {
+        if (query.isEmpty()) {
+            searchResults = emptyList()
+            searchPerformed = false
+            isSearching = false
+            return
         }
-    }
 
+        isSearching = true
+        searchPerformed = true
 
-    fun loadAllUsers() {
-        database.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(dataSnapshot: DataSnapshot) {
-                val users = dataSnapshot.children.mapNotNull { snapshot ->
-                    val uid = snapshot.key ?: return@mapNotNull null
-                    if (uid == userId) return@mapNotNull null
-                    val userMap = snapshot.value as? Map<String, Any>
-                    userMap?.let {
-                        mapOf(
-                            "uid" to uid,
-                            "username" to (it["username"] as? String ?: ""),
-                            "email" to (it["email"] as? String ?: ""),
-                            "profileImageUri" to (it["profileImageUri"] as? String ?: "")
-                        )
+        // Firebase query: search usernames starting with the query
+        database
+            .orderByChild("username")
+            .startAt(query)
+            .endAt(query + "\uf8ff")
+            .limitToFirst(20) // Only fetch 20 results max
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val users = snapshot.children.mapNotNull { userSnapshot ->
+                        val uid = userSnapshot.key ?: return@mapNotNull null
+                        if (uid == userId) return@mapNotNull null // Don't show current user
+
+                        val userMap = userSnapshot.value as? Map<String, Any>
+                        userMap?.let {
+                            mapOf(
+                                "uid" to uid,
+                                "username" to (it["username"] as? String ?: ""),
+                                "email" to (it["email"] as? String ?: ""),
+                                "profileImageUri" to (it["profileImageUri"] as? String ?: "")
+                            )
+                        }
                     }
+                    searchResults = users
+                    isSearching = false
                 }
-                allUsers = users
-                performSearch(search)
-            }
 
-            override fun onCancelled(databaseError: DatabaseError) {
-                Log.e("FirebaseSearch", "Error fetching data", databaseError.toException())
-            }
-        })
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("FirebaseSearch", "Error searching users", error.toException())
+                    searchResults = emptyList()
+                    isSearching = false
+                }
+            })
     }
 
-
-    LaunchedEffect(Unit) {
-        loadAllUsers()
-    }
-
+    // ✅ OPTIMIZED: Add rate limiting and validation
     fun sendFriendRequest(targetUserId: String) {
         val currentUser = FirebaseAuth.getInstance().currentUser
         val currentUserId = currentUser?.uid
 
-        if (currentUserId != null) {
-            val sentRequestsRef = database.child(currentUserId).child("sent_requests")
+        if (currentUserId == null) {
+            Log.e("FriendRequest", "User not logged in")
+            return
+        }
 
-            sentRequestsRef.orderByChild("to").equalTo(targetUserId)
-                .addListenerForSingleValueEvent(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-                        val existingRequest = snapshot.children.firstOrNull {
-                            it.child("status").value == "pending"
-                        }
+        // ✅ Validate input
+        if (targetUserId.isBlank() || targetUserId == currentUserId) {
+            Log.w("FriendRequest", "Invalid target user ID")
+            return
+        }
 
-                        if (existingRequest != null) {
-                            showDuplicateDialog = true
-                        } else {
-                            val friendRequest = mapOf(
-                                "from" to currentUserId,
-                                "to" to targetUserId,
-                                "status" to "pending"
+        // ✅ Rate limiting
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastRequestTime < REQUEST_COOLDOWN) {
+            android.widget.Toast.makeText(
+                context,
+                "Please wait before sending another request",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        lastRequestTime = currentTime
+
+        val sentRequestsRef = database.child(currentUserId).child("sent_requests")
+
+        sentRequestsRef.orderByChild("to").equalTo(targetUserId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val existingRequest = snapshot.children.firstOrNull {
+                        it.child("status").value == "pending"
+                    }
+
+                    if (existingRequest != null) {
+                        showDuplicateDialog = true
+                    } else {
+                        val friendRequest = mapOf(
+                            "from" to currentUserId,
+                            "to" to targetUserId,
+                            "status" to "pending"
+                        )
+
+                        val newRequestKey = sentRequestsRef.push().key
+
+                        if (newRequestKey != null) {
+                            val updates = mapOf(
+                                "users/$currentUserId/sent_requests/$newRequestKey" to friendRequest,
+                                "users/$targetUserId/received_requests/$newRequestKey" to friendRequest
                             )
 
-                            val newRequestKey = sentRequestsRef.push().key
-
-                            if (newRequestKey != null) {
-                                val updates = mapOf(
-                                    "/$currentUserId/sent_requests/$newRequestKey" to friendRequest,
-                                    "/$targetUserId/received_requests/$newRequestKey" to friendRequest
-                                )
-
-                                database.updateChildren(updates)
-                                    .addOnSuccessListener {
-                                        Log.d("FriendRequest", "Friend request sent successfully")
-                                    }
-                                    .addOnFailureListener { exception ->
-                                        Log.e("FriendRequest", "Error sending friend request", exception)
-                                    }
-                            }
+                            database.updateChildren(updates)
+                                .addOnSuccessListener {
+                                    Log.d("FriendRequest", "Friend request sent successfully")
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Friend request sent",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                .addOnFailureListener { exception ->
+                                    Log.e("FriendRequest", "Error sending friend request", exception)
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Failed to send request",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                         }
                     }
+                }
 
-                    override fun onCancelled(error: DatabaseError) {
-                        Log.e("FriendRequest", "Error checking for duplicate requests", error.toException())
-                    }
-                })
-        } else {
-            Log.e("FriendRequest", "User not logged in")
-        }
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("FriendRequest", "Error checking for duplicate requests", error.toException())
+                }
+            })
     }
 
     Column {
@@ -363,6 +391,48 @@ fun UserAddFriends() {
 
         LazyColumn {
             if (!searchPerformed) {
+                // ✅ IMPROVED: Show prompt to search
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.searchicon),
+                                contentDescription = "Search",
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "Search for friends by username",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            } else if (isSearching) {
+                // ✅ IMPROVED: Show loading state
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF2F9ECE),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
             } else if (searchResults.isEmpty()) {
                 item {
                     Box(
@@ -371,7 +441,10 @@ fun UserAddFriends() {
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No results found")
+                        Text(
+                            "No users found matching \"$search\"",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             } else {
@@ -388,15 +461,15 @@ fun UserAddFriends() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            Modifier.width(160.dp)
+                            Modifier
+                                .width(160.dp)
                                 .clickable {
                                     val intent = Intent(context, ProfileActivity::class.java).apply {
-                                        putExtra("friendId", targetUserId) // Pass only the userId
+                                        putExtra("friendId", targetUserId)
                                     }
                                     context.startActivity(intent)
                                 }
-                        )
-                        {
+                        ) {
                             val painter = rememberAsyncImagePainter(model = profileImageUri)
                             Image(
                                 painter = painter,
@@ -420,7 +493,7 @@ fun UserAddFriends() {
                             modifier = Modifier
                                 .height(36.dp)
                                 .width(100.dp),
-                            onClick= {
+                            onClick = {
                                 sendFriendRequest(targetUserId)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.background),
@@ -452,8 +525,6 @@ fun AddFriendsTopBar(
     val searchIcon = painterResource(id = R.drawable.searchicon)
 
     Column(modifier = Modifier.fillMaxWidth()) {
-
-        // Header row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -461,8 +532,6 @@ fun AddFriendsTopBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-
-            // Profile + username
             Row(
                 modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
@@ -500,7 +569,6 @@ fun AddFriendsTopBar(
                 )
             }
 
-            // Settings button
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
@@ -530,7 +598,6 @@ fun AddFriendsTopBar(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Title
         Text(
             text = "Add Friends",
             fontSize = 28.sp,
@@ -540,7 +607,6 @@ fun AddFriendsTopBar(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Search bar (IDENTICAL behavior & styling)
         TextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
@@ -615,7 +681,6 @@ fun loadReceivedRequestsWithDetails(
 ) {
     val database = FirebaseDatabase.getInstance()
         .getReference("users")
-//        .child("users")
         .child(userId)
         .child("received_requests")
     val usersDatabase = FirebaseDatabase.getInstance()
@@ -627,7 +692,6 @@ fun loadReceivedRequestsWithDetails(
         Log.d("Firebase", "Snapshot exists: ${snapshot.exists()}")
 
         if (snapshot.exists()) {
-
             val fetchDetailsTasks = snapshot.children.map { requestSnapshot ->
                 val from = requestSnapshot.child("from").getValue(String::class.java) ?: ""
                 val to = requestSnapshot.child("to").getValue(String::class.java) ?: ""
@@ -640,7 +704,7 @@ fun loadReceivedRequestsWithDetails(
                     val userSnapshot = userSnapshotTask.result
                     val userDetails = if (userSnapshot.exists()) {
                         mapOf(
-                            "friendId" to from, // Store the sender's userId
+                            "friendId" to from,
                             "username" to (userSnapshot.child("username").getValue(String::class.java) ?: "Unknown User"),
                             "profileImageUri" to (userSnapshot.child("profileImageUri").getValue(String::class.java) ?: "")
                         )
@@ -674,7 +738,7 @@ fun UserReceivesRequest() {
     val userId = currentUser?.uid ?: ""
     val showDialog = remember { mutableStateOf(false) }
     val message = remember { mutableStateOf("") }
-    val context= LocalContext.current
+    val context = LocalContext.current
 
     LaunchedEffect(userId) {
         Log.d("UserReceivesRequest", "Fetching friend requests for $userId")
@@ -684,6 +748,7 @@ fun UserReceivesRequest() {
             friendRequests.addAll(requests)
         }
     }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -713,10 +778,11 @@ fun UserReceivesRequest() {
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
                             .clickable {
                                 val intent = Intent(context, ProfileActivity::class.java).apply {
-                                    putExtra("friendId", friendId) // Pass only the userId
+                                    putExtra("friendId", friendId)
                                 }
                                 context.startActivity(intent)
                             }
@@ -792,6 +858,7 @@ fun UserReceivesRequest() {
             }
         }
     }
+
     if (showDialog.value) {
         AlertDialog(
             onDismissRequest = { showDialog.value = false },
@@ -805,7 +872,6 @@ fun UserReceivesRequest() {
         )
     }
 }
-
 
 private fun handleFriendRequest(
     request: FriendRequest,
@@ -821,104 +887,92 @@ private fun handleFriendRequest(
     if (isAccepted) {
         Log.d("FriendRequest", "Accepted: Processing friend request")
 
-        // Use a single batch of updates instead of nested callbacks
-        val updates = mutableMapOf<String, Any?>()
+        val receivedTask = db.child("users/$userId/received_requests")
+            .orderByChild("from").equalTo(request.from).get()
 
-        // Remove from received_requests
-        db.child("users").child(userId).child("received_requests")
-            .orderByChild("from").equalTo(request.from)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                // Collect all paths to delete
-                snapshot.children.forEach { child ->
+        val sentTask = db.child("users/${request.from}/sent_requests")
+            .orderByChild("to").equalTo(userId).get()
+
+        Tasks.whenAllSuccess<DataSnapshot>(receivedTask, sentTask)
+            .addOnSuccessListener { results ->
+                val updates = mutableMapOf<String, Any?>()
+
+                results[0].children.forEach { child ->
                     updates["users/$userId/received_requests/${child.key}"] = null
                 }
 
-                // Remove from sent_requests
-                db.child("users").child(request.from).child("sent_requests")
-                    .orderByChild("to").equalTo(userId)
-                    .get()
-                    .addOnSuccessListener { sentSnapshot ->
-                        sentSnapshot.children.forEach { child ->
-                            updates["users/${request.from}/sent_requests/${child.key}"] = null
+                results[1].children.forEach { child ->
+                    updates["users/${request.from}/sent_requests/${child.key}"] = null
+                }
+
+                // Add friends
+                val receiverFriendKey = db.child("users/$userId/friends").push().key
+                val senderFriendKey = db.child("users/${request.from}/friends").push().key
+
+                if (receiverFriendKey != null && senderFriendKey != null) {
+                    updates["users/$userId/friends/$receiverFriendKey"] = mapOf(
+                        "friendId" to request.from,
+                        "timestamp" to System.currentTimeMillis()
+                    )
+                    updates["users/${request.from}/friends/$senderFriendKey"] = mapOf(
+                        "friendId" to userId,
+                        "timestamp" to System.currentTimeMillis()
+                    )
+
+                    // Perform all updates at once
+                    db.updateChildren(updates)
+                        .addOnSuccessListener {
+                            Log.d("FriendRequest", "Friend request accepted successfully")
+                            showDialog.value = true
+                            message.value = "You are now friends with $username"
+                            onComplete()
                         }
-
-                        // Add friends
-                        val receiverFriendKey = db.child("users").child(userId).child("friends").push().key
-                        val senderFriendKey = db.child("users").child(request.from).child("friends").push().key
-
-                        if (receiverFriendKey != null && senderFriendKey != null) {
-                            updates["users/$userId/friends/$receiverFriendKey"] = mapOf(
-                                "friendId" to request.from,
-                                "timestamp" to System.currentTimeMillis()
-                            )
-                            updates["users/${request.from}/friends/$senderFriendKey"] = mapOf(
-                                "friendId" to userId,
-                                "timestamp" to System.currentTimeMillis()
-                            )
-
-                            // Perform all updates at once
-                            db.updateChildren(updates)
-                                .addOnSuccessListener {
-                                    Log.d("FriendRequest", "Friend request accepted successfully")
-                                    showDialog.value = true
-                                    message.value = "You are now friends with $username"
-                                    onComplete()
-                                }
-                                .addOnFailureListener { e ->
-                                    Log.e("FriendRequest", "Failed to update database: ${e.message}")
-                                }
-                        } else {
-                            Log.e("FriendRequest", "Failed to generate keys for friends")
+                        .addOnFailureListener { e ->
+                            Log.e("FriendRequest", "Failed to update database: ${e.message}")
                         }
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("FriendRequest", "Failed to query sent requests: ${e.message}")
-                    }
+                } else {
+                    Log.e("FriendRequest", "Failed to generate keys for friends")
+                }
             }
             .addOnFailureListener { e ->
-                Log.e("FriendRequest", "Failed to query received requests: ${e.message}")
+                Log.e("FriendRequest", "Failed to fetch requests: ${e.message}")
             }
     } else {
         Log.d("FriendRequest", "Declined: Removing request from both received and sent requests")
 
-        val updates = mutableMapOf<String, Any?>()
+        // ✅ Use Tasks.whenAllSuccess for parallel execution
+        val receivedTask = db.child("users/$userId/received_requests")
+            .orderByChild("from").equalTo(request.from).get()
 
-        // Delete from received_requests
-        db.child("users").child(userId).child("received_requests")
-            .orderByChild("from").equalTo(request.from)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                snapshot.children.forEach { child ->
+        val sentTask = db.child("users/${request.from}/sent_requests")
+            .orderByChild("to").equalTo(userId).get()
+
+        Tasks.whenAllSuccess<DataSnapshot>(receivedTask, sentTask)
+            .addOnSuccessListener { results ->
+                val updates = mutableMapOf<String, Any?>()
+
+                // Delete from received_requests
+                results[0].children.forEach { child ->
                     updates["users/$userId/received_requests/${child.key}"] = null
                 }
 
                 // Delete from sent_requests
-                db.child("users").child(request.from).child("sent_requests")
-                    .orderByChild("to").equalTo(userId)
-                    .get()
-                    .addOnSuccessListener { sentSnapshot ->
-                        sentSnapshot.children.forEach { child ->
-                            updates["users/${request.from}/sent_requests/${child.key}"] = null
-                        }
+                results[1].children.forEach { child ->
+                    updates["users/${request.from}/sent_requests/${child.key}"] = null
+                }
 
-                        // Perform all deletions at once
-                        db.updateChildren(updates)
-                            .addOnSuccessListener {
-                                Log.d("FriendRequest", "Friend request declined and removed")
-                                onComplete()
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e("FriendRequest", "Failed to delete requests: ${e.message}")
-                            }
+                // Perform all deletions at once
+                db.updateChildren(updates)
+                    .addOnSuccessListener {
+                        Log.d("FriendRequest", "Friend request declined and removed")
+                        onComplete()
                     }
                     .addOnFailureListener { e ->
-                        Log.e("FriendRequest", "Failed to query sent requests: ${e.message}")
+                        Log.e("FriendRequest", "Failed to delete requests: ${e.message}")
                     }
             }
             .addOnFailureListener { e ->
-                Log.e("FriendRequest", "Failed to query received requests: ${e.message}")
+                Log.e("FriendRequest", "Failed to fetch requests: ${e.message}")
             }
     }
 }
-
