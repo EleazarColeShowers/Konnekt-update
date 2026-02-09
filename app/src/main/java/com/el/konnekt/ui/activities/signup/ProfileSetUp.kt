@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -201,13 +202,16 @@ fun ProfileFill(username: String, bio: String){
     }
     val maxBioLength = 139
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+
+    // Replace GetContent with PickVisualMedia (Photo Picker)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         uri?.let { selectedUri ->
             selectedImageUri = selectedUri
         }
     }
+
     val painter by rememberUpdatedState(
         if (selectedImageUri != null) {
             rememberAsyncImagePainter(selectedImageUri!!)
@@ -283,7 +287,10 @@ fun ProfileFill(username: String, bio: String){
                     .size(28.dp)
                     .offset(30.dp, 30.dp)
                     .clickable {
-                        galleryLauncher.launch("image/*")
+                        // Launch Photo Picker for images only
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
                     }
             )
         }
@@ -422,7 +429,6 @@ fun GetStarted(
     }
 
 }
-//TODO: save bio to real time database as well.
 
 fun uploadProfileImageToFirebaseStorage(
     imageUri: Uri,

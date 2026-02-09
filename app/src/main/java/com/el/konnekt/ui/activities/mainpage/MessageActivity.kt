@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -502,8 +503,8 @@ fun CreateGroupBottomSheet(
     val selectedFriends = remember { mutableStateListOf<String>() }
     var groupImageUri by remember { mutableStateOf<Uri?>(null) }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         groupImageUri = uri
     }
@@ -550,7 +551,11 @@ fun CreateGroupBottomSheet(
                             if (groupImageUri != null) Color.Transparent
                             else MaterialTheme.colorScheme.primaryContainer
                         )
-                        .clickable { launcher.launch("image/*") },
+                        .clickable {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     if (groupImageUri != null) {

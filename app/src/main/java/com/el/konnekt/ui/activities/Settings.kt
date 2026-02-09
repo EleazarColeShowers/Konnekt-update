@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -73,7 +74,9 @@ fun SettingsPage() {
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showBioDialog by remember { mutableStateOf(false) }
 
-    val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
         if (uri != null) {
             selectedImageUri = uri
             uploadImageToFirebase(uri, user, database, storageReference) { downloadUrl ->
@@ -139,7 +142,11 @@ fun SettingsPage() {
         // Settings Options
         SettingOption("Change Username") { showDialog = true }
         SettingOption("Change Bio") { showBioDialog = true }
-        SettingOption("Change Profile Picture") { pickImageLauncher.launch("image/*") }
+        SettingOption("Change Profile Picture") {
+            pickImageLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }
         SettingOption("Privacy Settings") {
             android.widget.Toast.makeText(context, "Privacy settings coming soon", android.widget.Toast.LENGTH_SHORT).show()
         }
