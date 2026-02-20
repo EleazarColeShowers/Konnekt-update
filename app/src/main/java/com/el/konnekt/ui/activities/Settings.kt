@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -73,6 +74,9 @@ fun SettingsPage() {
     var showDialog by remember { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showBioDialog by remember { mutableStateOf(false) }
+
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
 
     val pickImageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -170,6 +174,19 @@ fun SettingsPage() {
         ) {
             Text("Logout", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedButton(
+            onClick = { showDeleteDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Red)
+        ) {
+            Text("Delete Account", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        }
+
     }
 
     if (showDialog) {
@@ -205,6 +222,45 @@ fun SettingsPage() {
             }
         )
     }
+    if (showDeleteDialog) {
+        DeleteAccountDialog(
+            onDismiss = { showDeleteDialog = false },
+            onConfirm = {
+                showDeleteDialog = false
+                isDeleting = true
+                deleteAccount(context) { success, error ->
+                    isDeleting = false
+                    if (success) {
+                        val intent = Intent(context, LoginActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        }
+                        context.startActivity(intent)
+                    } else {
+                        // Auth deletion often requires recent login
+                        android.widget.Toast.makeText(
+                            context,
+                            if (error?.contains("requires-recent-login") == true)
+                                "Please log out and log back in before deleting your account."
+                            else
+                                "Failed to delete account: $error",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        )
+    }
+
+    if (isDeleting) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f)),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = Color.White)
+        }
+    }
 }
 
 @Composable
@@ -225,6 +281,33 @@ fun SettingOption(text: String, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onBackground
         )
     }
+}
+
+@Composable
+fun DeleteAccountDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete Account", fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                "This will permanently delete your account, profile, and all your data. This cannot be undone.",
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+            ) {
+                Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable
@@ -394,4 +477,39 @@ fun updateBio(newBio: String, onComplete: (Boolean) -> Unit) {
         Log.e("UpdateBio", "User is null")
         onComplete(false)
     }
+}
+
+fun deleteAccount(context: android.content.Context, onComplete: (Boolean, String?) -> Unit) {
+    val auth = FirebaseAuth.getInstance()
+    val user = auth.currentUser ?: run {
+        onComplete(false, "No user signed in")
+        return
+    }
+
+    val uid = user.uid
+    val database = FirebaseDatabase.getInstance().reference
+    val storage = FirebaseStorage.getInstance().reference
+
+    // Delete profile image from Storage first
+    storage.child("profile_images/$uid/profile_image.jpg")
+        .delete()
+        .addOnCompleteListener {
+            // Whether or not image existed, continue to delete DB data
+            database.child("users").child(uid)
+                .removeValue()
+                .addOnSuccessListener {
+                    // Finally delete the Auth account
+                    user.delete()
+                        .addOnSuccessListener {
+                            onComplete(true, null)
+                        }
+                        .addOnFailureListener { e ->
+                            // DB deleted but auth failed — likely needs re-authentication
+                            onComplete(false, e.message)
+                        }
+                }
+                .addOnFailureListener { e ->
+                    onComplete(false, e.message)
+                }
+        }
 }

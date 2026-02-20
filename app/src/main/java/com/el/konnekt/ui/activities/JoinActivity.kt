@@ -4,16 +4,22 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
@@ -24,11 +30,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,135 +83,135 @@ class JoinActivity: ComponentActivity() {
 }
 
 @Composable
-fun JoinPage(){
+fun JoinPage() {
     val context = LocalContext.current
-    Column {
-        AnimatedConnection()
-        ConnectionWriteUp()
-        RoundedClickableColumn(onClick ={
-            val intent = Intent(context, SignUpActivity::class.java)
-            context.startActivity(intent)
-        })
-        Spacer(modifier = Modifier.height(10.dp))
-        ExistingAccount()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // Lottie with a soft tinted background circle behind it
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(300.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF2F9ECE).copy(alpha = 0.07f))
+        ) {
+            AnimatedConnection(
+                modifier = Modifier.size(260.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        // Tag line chip
+        Surface(
+            shape = RoundedCornerShape(50.dp),
+            color = Color(0xFF2F9ECE).copy(alpha = 0.12f),
+            modifier = Modifier.wrapContentWidth()
+        ) {
+            Text(
+                text = "✦ Connect with the world",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF2F9ECE),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Get Connected,\nStay Connected.",
+            fontWeight = FontWeight.Bold,
+            fontSize = 34.sp,
+            lineHeight = 44.sp,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text(
+            text = "Chat with friends, family, and people\nacross the globe — all in one place.",
+            fontWeight = FontWeight.Normal,
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Primary button
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF2F9ECE),
+            shadowElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clickable {
+                    context.startActivity(Intent(context, SignUpActivity::class.java))
+                }
+        ) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Text(
+                    text = "Create an Account",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.3.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 40.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Already have an account? ",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+            )
+            Text(
+                text = "Log in",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF2F9ECE),
+                modifier = Modifier.clickable {
+                    context.startActivity(Intent(context, LoginActivity::class.java))
+                }
+            )
+        }
     }
 }
 
 @Composable
 fun AnimatedConnection(modifier: Modifier = Modifier) {
-    val preloaderLottieComposition by rememberLottieComposition(
-        LottieCompositionSpec.RawRes(
-            R.raw.connected
-        )
+    val composition by rememberLottieComposition(
+        LottieCompositionSpec.RawRes(R.raw.connected)
     )
-
-    val preloaderProgress by animateLottieCompositionAsState(
-        composition = preloaderLottieComposition,
+    val progress by animateLottieCompositionAsState(
+        composition = composition,
         iterations = LottieConstants.IterateForever,
         isPlaying = true
     )
 
-    Column(
-        modifier= Modifier.padding(horizontal = 10.dp)
-    ) {
-        LottieAnimation(
-            composition = preloaderLottieComposition,
-            progress = preloaderProgress,
-            modifier = modifier
-                .width(400.dp)
-                .height(400.dp)
-        )
-    }
-}
-
-@Composable
-fun ConnectionWriteUp(){
-    Column(modifier= Modifier
-        .height(240.dp)
-        .fillMaxWidth()
-        .padding(horizontal = 10.dp)) {
-        Text(
-            text = "Get Connected And Stay Connected",
-            fontWeight = FontWeight.Bold,
-            fontSize = 35.sp,
-            lineHeight = 50.sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text ="Connect and network with friends, families and strangers all over the globe with voice calls, video calls and chats on Konnekt",
-            fontWeight = FontWeight.Light,
-            fontSize = 18.sp,
-            lineHeight = 25.sp
-        )
-    }
-
-}
-
-@Composable
-fun RoundedClickableColumn(onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(25.dp), // Adjust the corner radius as needed
-        color = Color(0xFF2F9ECE), // Change the background color as needed
-        modifier = Modifier
-            .height(54.dp)
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clickable(onClick = onClick)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Join Now",
-                color = Color(0xFFFFFFFF), // Change the text color as needed
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(16.dp),
-            )
-
-        }
-    }
-}
-@Composable
-fun ExistingAccount() {
-    val context = LocalContext.current
-    val loginText = "Login"
-
-    val text = buildAnnotatedString {
-        // Apply the default text color from MaterialTheme
-        pushStyle(
-            SpanStyle(
-                color = MaterialTheme.colorScheme.onBackground // Adapts to dark/light mode
-            )
-        )
-        append("Already have an account? ")
-
-
-        pushStyle(
-            SpanStyle(
-                color = Color(0xFF2F9ECE),
-                textDecoration = TextDecoration.None
-            )
-        )
-        append(loginText)
-        pop()
-        pop()
-    }
-
-    ClickableText(
-        text = text,
-        onClick = {
-            val startIndex = text.indexOf(loginText)
-            val endIndex = startIndex + loginText.length
-            if (it in startIndex..endIndex) {
-                val intent = Intent(context, LoginActivity::class.java)
-                context.startActivity(intent)
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 80.dp)
+    LottieAnimation(
+        composition = composition,
+        progress = progress,
+        modifier = modifier
     )
 }

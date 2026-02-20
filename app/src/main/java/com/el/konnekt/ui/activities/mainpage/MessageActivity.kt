@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -122,6 +123,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MessageActivity: ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -133,6 +135,7 @@ class MessageActivity: ComponentActivity() {
                 ) {
                     Column(modifier = Modifier
                         .fillMaxSize()
+                        .safeDrawingPadding()
                         .padding(horizontal = 15.dp)
                     ) {
                         MessagePage()
@@ -142,11 +145,15 @@ class MessageActivity: ComponentActivity() {
         }
     }
 
+    companion object {
+        var shouldRefreshFriends = false
+    }
+
     override fun onResume() {
         super.onResume()
         KonnektApplication.setCurrentChat(null)
+        shouldRefreshFriends = true  // ADD THIS
 
-        // Start listeners in background thread to avoid blocking UI
         val userId = FirebaseAuth.getInstance().currentUser?.uid
         if (userId != null) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -186,7 +193,8 @@ fun MessagePage() {
     var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
     val app = context.applicationContext as Application
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
+    var hasLoaded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
 
@@ -242,6 +250,25 @@ fun MessagePage() {
         }
     }
 
+    // Add this in MessagePage(), alongside the other LaunchedEffects
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (MessageActivity.shouldRefreshFriends && userId.isNotEmpty()) {
+                    MessageActivity.shouldRefreshFriends = false
+                    viewModel.loadFriendsWithDetails(userId, forceRefresh = true) { friends ->
+                        friendList.clear()
+                        friendList.addAll(friends)
+                        hasLoaded = true
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val cachedFriends by viewModel.cachedFriends.collectAsState()
 
     LaunchedEffect(userId) {
@@ -255,33 +282,49 @@ fun MessagePage() {
         }
     }
 
-    LaunchedEffect(userId) {
-        if (userId.isEmpty()) {
-            isLoading = false
-            return@LaunchedEffect
-        }
+    DisposableEffect(userId) {
+        if (userId.isEmpty()) return@DisposableEffect onDispose {}
 
-        scope.launch(Dispatchers.IO) {
-            try {
-                if (cachedFriends.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        friendList.clear()
-                        friendList.addAll(cachedFriends)
-                        isLoading = false
-                    }
-                } else {
-                    viewModel.loadFriendsWithDetails(userId, forceRefresh = false) { friends ->
-                        friendList.clear()
-                        friendList.addAll(friends)
-                        isLoading = false
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MessagePage", "Error loading friends", e)
-                withContext(Dispatchers.Main) {
-                    isLoading = false
+        val friendsRef = FirebaseDatabase.getInstance().reference
+            .child("users")
+            .child(userId)
+            .child("friends")
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                viewModel.loadFriendsWithDetails(userId, forceRefresh = true) { friends ->
+                    friendList.clear()
+                    friendList.addAll(friends)
                 }
             }
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("MessagePage", "Friends listener cancelled: ${error.message}")
+            }
+        }
+
+        friendsRef.addValueEventListener(listener)
+
+        onDispose {
+            friendsRef.removeEventListener(listener)
+        }
+    }
+
+    LaunchedEffect(userId) {
+        if (userId.isEmpty()) {
+            hasLoaded = true
+            return@LaunchedEffect
+        }
+        scope.launch(Dispatchers.IO) {
+            // Still load from Room instantly for zero-flash startup
+            val localFriends = viewModel.loadFriendsFromLocal(userId)
+            withContext(Dispatchers.Main) {
+                if (localFriends.isNotEmpty()) {
+                    friendList.clear()
+                    friendList.addAll(localFriends)
+                }
+                hasLoaded = true
+            }
+            // Firebase live listener above will handle the rest
         }
     }
 
@@ -414,37 +457,33 @@ fun MessagePage() {
             ) {
                 composable("message") { MessageFrag(username = username) }
                 composable("friends") {
-                    if (isLoading) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                    when {
+                        // Still waiting on even the local DB
+                        !hasLoaded -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
                             ) {
                                 CircularProgressIndicator(
                                     color = Color(0xFF2F9ECE),
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Text(
-                                    text = "Loading chats...",
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    modifier = Modifier.size(36.dp)
                                 )
                             }
                         }
-                    } else if (friendList.isEmpty() && viewModel.groupChats.value.isEmpty()) {
-                        MessageFrag(username = username)
-                    } else {
-                        FriendsListScreen(
-                            friendList = friendList,
-                            navController = navController,
-                            currentUserId = userId,
-                            searchQuery = searchQuery,
-                            viewModel
-                        )
+                        // Loaded and truly empty — new user
+                        friendList.isEmpty() && viewModel.groupChats.value.isEmpty() -> {
+                            MessageFrag(username = username)
+                        }
+                        // Has data
+                        else -> {
+                            FriendsListScreen(
+                                friendList = friendList,
+                                navController = navController,
+                                currentUserId = userId,
+                                searchQuery = searchQuery,
+                                viewModel
+                            )
+                        }
                     }
                 }
                 composable("chat") {
@@ -788,7 +827,7 @@ fun User(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 25.dp, bottom = 8.dp),
+                .padding( bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

@@ -163,6 +163,16 @@ class ChatViewModel(
         db.addValueEventListener(listener)
     }
 
+    suspend fun loadFriendsFromLocal(userId: String): List<Pair<Friend, Map<String, String>>> {
+        return repo.loadFriendsFromLocal(userId).map {
+            val details = mapOf(
+                "username" to it.username,
+                "profileImageUri" to it.profileImageUri
+            )
+            Friend(it.friendId) to details
+        }
+    }
+
     private val MAX_ACTIVE_LISTENERS = 50
 
     fun cleanupOldListeners() {
